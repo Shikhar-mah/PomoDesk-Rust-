@@ -1,0 +1,42 @@
+[package]
+name = "pomodesk"
+version = "0.1.0"
+description = "PomoDesk — an offline pomodoro timer with tasks and stats"
+edition = "2021"
+rust-version = "1.77.2"
+
+# The app is built as a library plus a thin binary entry point.
+# Keeping the logic in the library makes it unit-testable with `cargo test`.
+[lib]
+name = "pomodesk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `tray-icon` enables the system tray; `image-png` lets us load the tray image.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `migrate` gives us sqlx::migrate! for versioned schema changes, and `macros`
+# provides the `FromRow` derive. Default features are off so the PostgreSQL and
+# MySQL drivers are not downloaded and compiled: PomoDesk only uses SQLite.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "migrate",
+    "macros",
+] }
+tokio = { version = "1", features = ["time", "sync", "rt-multi-thread", "macros"] }
+chrono = "0.4"
+
+[profile.release]
+# Smaller binaries are nicer for a small desktop utility.
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

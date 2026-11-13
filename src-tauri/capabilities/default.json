@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions the PomoDesk window needs. The app talks to its own Rust commands only; there is no remote content.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* The app uses one restrained palette: warm neutral surfaces with a single
+   mode colour on the timer card. Colour is always paired with a text label. */
+:root {
+  color-scheme: light;
+  --mode-focus: #b3402f;
+  --mode-short: #2f7d82;
+  --mode-long: #33608a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #f4f4f5;
+  color: #27272a;
+  font-family:
+    "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Mode colours for the timer card. Kept in CSS so the classes stay readable. */
+.timer-focus {
+  background-color: var(--mode-focus);
+}
+
+.timer-short {
+  background-color: var(--mode-short);
+}
+
+.timer-long {
+  background-color: var(--mode-long);
+}
+
+/* A visible focus ring is essential for keyboard users. */
+:focus-visible {
+  outline: 2px solid #18181b;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+dialog::backdrop {
+  background-color: rgba(24, 24, 27, 0.45);
+}
+
+/* Respect the operating system's reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

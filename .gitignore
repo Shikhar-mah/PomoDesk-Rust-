@@ -1,0 +1,25 @@
+# JavaScript
+node_modules/
+dist/
+*.local
+.vite/
+
+# Rust / Tauri build artefacts
+src-tauri/target/
+src-tauri/gen/
+
+# Local database (created at runtime in the OS app-data folder, but ignore
+# any copy that ends up in the project directory during testing)
+*.db
+*.db-shm
+*.db-wal
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test output
+coverage/
