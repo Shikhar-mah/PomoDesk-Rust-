@@ -20,8 +20,11 @@ interface TimerStore {
   resume: () => Promise<void>;
   skip: () => Promise<void>;
   reset: () => Promise<void>;
+  end: () => Promise<void>;
   /** Throws NEEDS_CONFIRMATION while a focus session is in progress. */
   switchPreset: (presetId: number, force: boolean) => Promise<void>;
+  /** Throws NEEDS_CONFIRMATION while a focus session is in progress. */
+  switchSessionType: (sessionType: "focus" | "short_break" | "long_break", force: boolean) => Promise<void>;
 }
 
 export const useTimerStore = create<TimerStore>((set) => ({
@@ -85,9 +88,18 @@ export const useTimerStore = create<TimerStore>((set) => ({
     set({ snapshot: await ipc.resetSession() });
   },
 
+  end: async () => {
+    set({ snapshot: await ipc.endSession() });
+  },
+
   switchPreset: async (presetId, force) => {
     // Errors (including the confirmation request) are handled by the caller.
     const snapshot = await ipc.switchPreset(presetId, force);
+    set({ snapshot });
+  },
+
+  switchSessionType: async (sessionType, force) => {
+    const snapshot = await ipc.switchSessionType(sessionType, force);
     set({ snapshot });
   },
 }));

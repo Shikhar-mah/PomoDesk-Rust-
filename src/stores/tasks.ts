@@ -17,6 +17,12 @@ interface TasksStore {
   toggleDone: (id: number, done: boolean) => Promise<void>;
   remove: (id: number) => Promise<void>;
   activate: (id: number | null) => Promise<void>;
+
+  addSubtask: (taskId: number, title: string, estSlots: number) => Promise<void>;
+  toggleSubtaskDone: (id: number, done: boolean) => Promise<void>;
+  removeSubtask: (id: number) => Promise<void>;
+  activateSubtask: (id: number | null) => Promise<void>;
+  editSubtask: (id: number, input: { title: string; estSlots: number; completedSlots?: number | null }) => Promise<void>;
 }
 
 export const useTasksStore = create<TasksStore>((set) => ({
@@ -58,6 +64,31 @@ export const useTasksStore = create<TasksStore>((set) => ({
 
   activate: async (id) => {
     await ipc.setActiveTask(id);
+    set({ tasks: await ipc.listTasks() });
+  },
+
+  addSubtask: async (taskId, title, estSlots) => {
+    await ipc.createSubtask(taskId, { title, estSlots });
+    set({ tasks: await ipc.listTasks() });
+  },
+
+  toggleSubtaskDone: async (id, done) => {
+    await ipc.setSubtaskDone(id, done);
+    set({ tasks: await ipc.listTasks() });
+  },
+
+  removeSubtask: async (id) => {
+    await ipc.deleteSubtask(id);
+    set({ tasks: await ipc.listTasks() });
+  },
+
+  activateSubtask: async (id) => {
+    await ipc.setActiveSubtask(id);
+    set({ tasks: await ipc.listTasks() });
+  },
+
+  editSubtask: async (id, input) => {
+    await ipc.updateSubtask(id, input);
     set({ tasks: await ipc.listTasks() });
   },
 }));

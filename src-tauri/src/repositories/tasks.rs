@@ -56,14 +56,19 @@ pub async fn update(
     id: i64,
     input: &TaskInput,
 ) -> Result<TaskRow, AppError> {
-    let affected = sqlx::query("UPDATE tasks SET title = ?, note = ?, est_slots = ? WHERE id = ?")
-        .bind(&input.title)
-        .bind(&input.note)
-        .bind(input.est_slots)
-        .bind(id)
-        .execute(&mut *conn)
-        .await?
-        .rows_affected();
+    let affected = sqlx::query(
+        "UPDATE tasks SET title = ?, note = ?, est_slots = ?,
+                        completed_slots = COALESCE(?, completed_slots)
+         WHERE id = ?",
+    )
+    .bind(&input.title)
+    .bind(&input.note)
+    .bind(input.est_slots)
+    .bind(input.completed_slots)
+    .bind(id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
 
     if affected == 0 {
         return Err(AppError::not_found("That task no longer exists."));

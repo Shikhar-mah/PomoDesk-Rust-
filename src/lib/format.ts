@@ -5,8 +5,8 @@ import type { SessionType } from "./types";
 
 export const MODE_LABEL: Record<SessionType, string> = {
   focus: "Focus",
-  short_break: "Short Break",
-  long_break: "Long Break",
+  short_break: "Short break",
+  long_break: "Long break",
 };
 
 /** `remainingMs` → `"24:13"`. Rounds up, so a fresh timer reads its full time. */
@@ -43,6 +43,16 @@ export function weekdayLabel(date: string): string {
   const parsed = new Date(`${date}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toLocaleDateString(undefined, { weekday: "short" });
+}
+
+/**
+ * A wall-clock time as the user sees it on their own machine, e.g. `"3:45 PM"`.
+ * Used to say when the running session will end.
+ */
+export function formatEndTime(endsAt: number): string {
+  const parsed = new Date(endsAt);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 /** Adds one to a number and keeps it inside `min…max`. */

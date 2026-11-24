@@ -7,6 +7,7 @@ import { formatMinutes, weekdayLabel } from "../lib/format";
 import { useStatsStore } from "../stores/stats";
 import { Dialog } from "./ui/Dialog";
 import { EmptyState } from "./ui/EmptyState";
+import { Button } from "./ui/Button";
 
 interface StatsPanelProps {
   open: boolean;
@@ -29,13 +30,16 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
   const busiestDay = Math.max(1, ...daily.map((day) => day.minutes));
 
   return (
-    <Dialog open={open} title="Statistics" onClose={onClose} className="w-[min(94vw,560px)]">
+    <Dialog open={open} title="Statistics" onClose={onClose} className="dialog--wide">
       {loading ? <p className="py-6 text-sm text-zinc-500">Loading your statistics…</p> : null}
 
       {error ? (
-        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
+        <div className="banner flex-wrap items-center">
+          <p className="banner__text">{error}</p>
+          <Button size="sm" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
       ) : null}
 
       {!loading && !error && today && totals ? (
@@ -44,7 +48,7 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
             <h3 id="stats-today" className="mb-2 text-sm font-semibold text-zinc-800">
               Today
             </h3>
-            <dl className="grid grid-cols-3 gap-2">
+            <dl className="stat-grid">
               <StatBlock label="Focus sessions" value={String(today.sessions)} />
               <StatBlock label="Focus time" value={formatMinutes(today.focusMinutes)} />
               <StatBlock label="Tasks done" value={String(today.tasksCompleted)} />
@@ -57,30 +61,30 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
             </h3>
 
             {weekHasData ? (
-              <div className="flex h-36 items-end gap-2 rounded-lg border border-zinc-100 p-3">
+              <ul className="week-chart">
                 {daily.map((day) => {
-                  const height = Math.round((day.minutes / busiestDay) * 100);
+                  const width = Math.round((day.minutes / busiestDay) * 100);
+
                   return (
-                    <div key={day.date} className="flex h-full flex-1 flex-col items-center gap-1">
-                      <div className="flex w-full flex-1 items-end" aria-hidden="true">
-                        <div
-                          className="w-full rounded-t bg-zinc-800"
-                          style={{ height: day.minutes > 0 ? `${Math.max(height, 4)}%` : "2px" }}
+                    <li key={day.date} className="week-row">
+                      <span className="week-row__label">{weekdayLabel(day.date)}</span>
+                      <span className="week-row__track">
+                        <span
+                          className="week-row__bar"
+                          style={{ width: day.minutes > 0 ? `${Math.max(width, 4)}%` : "0%" }}
                         />
-                      </div>
-                      <p className="text-[11px] tabular-nums text-zinc-600">
-                        {weekdayLabel(day.date)}
-                      </p>
-                      <p
-                        className="text-[11px] tabular-nums text-zinc-400"
-                        aria-label={`${day.date}: ${day.sessions} sessions, ${day.minutes} minutes`}
-                      >
-                        {day.minutes}
-                      </p>
-                    </div>
+                      </span>
+                      <span className="week-row__value">
+                        {day.minutes}m
+                        <span className="sr-only">
+                          {" "}
+                          on {day.date}, {day.sessions} sessions
+                        </span>
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             ) : (
               <EmptyState
                 title="No focus sessions in the last 7 days"
@@ -93,7 +97,7 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
             <h3 id="stats-all-time" className="mb-2 text-sm font-semibold text-zinc-800">
               All time
             </h3>
-            <dl className="grid grid-cols-3 gap-2">
+            <dl className="stat-grid">
               <StatBlock label="Focus sessions" value={String(totals.sessions)} />
               <StatBlock label="Focus time" value={formatMinutes(totals.focusMinutes)} />
               <StatBlock
@@ -110,9 +114,9 @@ export function StatsPanel({ open, onClose }: StatsPanelProps) {
 
 function StatBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-      <dt className="text-[11px] text-zinc-500">{label}</dt>
-      <dd className="mt-0.5 text-lg font-semibold tabular-nums text-zinc-900">{value}</dd>
+    <div className="stat-block">
+      <dt className="stat-block__label">{label}</dt>
+      <dd className="stat-block__value">{value}</dd>
     </div>
   );
 }

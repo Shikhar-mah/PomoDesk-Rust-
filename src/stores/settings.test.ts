@@ -17,6 +17,7 @@ const defaults: Settings = {
   autoStartBreaks: true,
   autoStartFocus: false,
   soundEnabled: true,
+  soundId: "",
   notificationsEnabled: true,
   minimizeToTray: true,
 };

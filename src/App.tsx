@@ -11,17 +11,20 @@ import { Notice } from "./components/Notice";
 import { PresetTabs } from "./components/PresetTabs";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { StatsPanel } from "./components/StatsPanel";
+import { SubtaskDialog } from "./components/SubtaskDialog";
 import { TaskList } from "./components/TaskList";
 import { TimerCard } from "./components/TimerCard";
 import { Button } from "./components/ui/Button";
+import { ChartIcon, SettingsIcon, TargetIcon } from "./components/ui/Icon";
 import { bindCoreEvents } from "./lib/events";
 import { IpcError } from "./lib/ipc";
-import type { Task } from "./lib/types";
+import { stopCompletionSound } from "./lib/sound";
+import type { Subtask, Task } from "./lib/types";
+import { useBusyRunner } from "./lib/useBusyRunner";
 import { usePresetsStore } from "./stores/presets";
 import { useSettingsStore } from "./stores/settings";
 import { selectActiveTask, useTasksStore } from "./stores/tasks";
 import { useTimerStore } from "./stores/timer";
-import { useUiStore } from "./stores/ui";
 
 export default function App() {
   const snapshot = useTimerStore((state) => state.snapshot);
@@ -34,18 +37,24 @@ export default function App() {
   const tasks = useTasksStore((state) => state.tasks);
   const tasksLoading = useTasksStore((state) => state.loading);
   const tasksError = useTasksStore((state) => state.error);
-  const addTask = useTasksStore((state) => state.add);
 
   const settingsError = useSettingsStore((state) => state.error);
 
-  const [busy, setBusy] = useState(false);
+  // Timer work and task work are tracked separately, so one never freezes the
+  // other.
+  const timerAction = useBusyRunner();
+  const taskAction = useBusyRunner();
+
   const [statsOpen, setStatsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingSubtask, setEditingSubtask] = useState<Subtask | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
-  const [pendingSwitch, setPendingSwitch] = useState<{ presetId: number; message: string } | null>(
-    null,
-  );
+  const [pendingSwitch, setPendingSwitch] = useState<
+    | { kind: "preset"; presetId: number; message: string }
+    | { kind: "mode"; mode: "focus" | "short_break" | "long_break"; message: string }
+    | null
+  >(null);
 
   // ---- Bootstrap ---------------------------------------------------------
 
@@ -58,63 +67,113 @@ export default function App() {
     return bindCoreEvents();
   }, []);
 
-  // ---- Actions -----------------------------------------------------------
-
-  /** Runs an action, shows a friendly message if it fails, and tracks busy. */
-  const run = useCallback(async (action: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await action();
-    } catch (error) {
-      useUiStore.getState().reportError(error);
-    } finally {
-      setBusy(false);
-    }
+  /** Re-reads everything the core owns, after a failure the user can retry. */
+  const reload = useCallback(() => {
+    void usePresetsStore.getState().load();
+    void useTasksStore.getState().load();
+    void useTimerStore.getState().load();
+    void useSettingsStore.getState().load();
   }, []);
 
+  // ---- Actions -----------------------------------------------------------
+
   const toggleTimer = useCallback(() => {
+    // A notification may still be ringing from the previous session; touching
+    // the controls means the user has noticed it.
+    stopCompletionSound();
+
     const timer = useTimerStore.getState();
     const status = timer.snapshot?.status;
 
-    return run(async () => {
+    return timerAction.run(async () => {
       if (status === "running") await timer.pause();
       else if (status === "paused") await timer.resume();
       else await timer.start();
     });
-  }, [run]);
+  }, [timerAction]);
 
   const resetTimer = useCallback(
-    () => run(() => useTimerStore.getState().reset()),
-    [run],
+    () => {
+      stopCompletionSound();
+      return timerAction.run(() => useTimerStore.getState().reset());
+    },
+    [timerAction],
   );
 
-  const skipTimer = useCallback(() => run(() => useTimerStore.getState().skip()), [run]);
+  const skipTimer = useCallback(
+    () => {
+      stopCompletionSound();
+      return timerAction.run(() => useTimerStore.getState().skip());
+    },
+    [timerAction],
+  );
 
-  const selectPreset = useCallback(async (presetId: number) => {
-    try {
-      await useTimerStore.getState().switchPreset(presetId, false);
-    } catch (error) {
-      // Mid-focus, the core asks for confirmation instead of switching.
-      if (error instanceof IpcError && error.code === "NEEDS_CONFIRMATION") {
-        setPendingSwitch({ presetId, message: error.message });
-        return;
-      }
-      useUiStore.getState().reportError(error);
-    }
-  }, []);
+  const endTimer = useCallback(
+    () => {
+      stopCompletionSound();
+      return timerAction.run(() => useTimerStore.getState().end());
+    },
+    [timerAction],
+  );
+
+  const selectPreset = useCallback(
+    async (presetId: number) => {
+      stopCompletionSound();
+      await timerAction.run(async () => {
+        try {
+          await useTimerStore.getState().switchPreset(presetId, false);
+        } catch (error) {
+          // Mid-focus, the core asks for confirmation instead of switching.
+          if (error instanceof IpcError && error.code === "NEEDS_CONFIRMATION") {
+            setPendingSwitch({ kind: "preset", presetId, message: error.message });
+            return;
+          }
+          throw error;
+        }
+      });
+    },
+    [timerAction],
+  );
+
+  const selectMode = useCallback(
+    async (mode: "focus" | "short_break" | "long_break") => {
+      stopCompletionSound();
+      await timerAction.run(async () => {
+        try {
+          await useTimerStore.getState().switchSessionType(mode, false);
+        } catch (error) {
+          if (error instanceof IpcError && error.code === "NEEDS_CONFIRMATION") {
+            setPendingSwitch({ kind: "mode", mode, message: error.message });
+            return;
+          }
+          throw error;
+        }
+      });
+    },
+    [timerAction],
+  );
 
   async function confirmSwitch() {
     if (!pendingSwitch) return;
+    stopCompletionSound();
     const target = pendingSwitch;
     setPendingSwitch(null);
-    await run(() => useTimerStore.getState().switchPreset(target.presetId, true));
+    if (target.kind === "preset") {
+      await timerAction.run(() => useTimerStore.getState().switchPreset(target.presetId, true));
+    } else {
+      await timerAction.run(() => useTimerStore.getState().switchSessionType(target.mode, true));
+    }
   }
 
   async function confirmDeleteTask() {
     if (!deletingTask) return;
     const target = deletingTask;
     setDeletingTask(null);
-    await run(() => useTasksStore.getState().remove(target.id));
+    await taskAction.run(() => useTasksStore.getState().remove(target.id));
+  }
+
+  async function clearActiveTask() {
+    await taskAction.run(() => useTasksStore.getState().activate(null));
   }
 
   // ---- Keyboard shortcuts ------------------------------------------------
@@ -123,19 +182,37 @@ export default function App() {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
 
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
+      // The control the user is really in, even when they pressed a child of it.
+      const control = (event.target as HTMLElement | null)?.closest(
+        "input, textarea, select, button, a, [contenteditable]",
+      ) as HTMLElement | null;
+
+      const tag = control?.tagName;
+      const inputType = (control as HTMLInputElement | null)?.type;
+
+      // Never steal keys while the user is typing.
       const isTyping =
-        tag === "INPUT" ||
+        control?.isContentEditable === true ||
         tag === "TEXTAREA" ||
         tag === "SELECT" ||
-        tag === "BUTTON" ||
-        target?.isContentEditable === true;
+        (tag === "INPUT" &&
+          inputType !== "checkbox" &&
+          inputType !== "radio" &&
+          inputType !== "button" &&
+          inputType !== "submit" &&
+          inputType !== "reset");
 
       // Do not steal keys while typing or while a dialog is open.
       if (isTyping || document.querySelector("dialog[open]")) return;
 
+      // Buttons, links and checkboxes use Space themselves, so let them have it.
+      const controlUsesSpace =
+        tag === "BUTTON" ||
+        tag === "A" ||
+        (tag === "INPUT" && (inputType === "checkbox" || inputType === "radio"));
+
       if (event.code === "Space") {
+        if (controlUsesSpace) return;
         event.preventDefault();
         void toggleTimer();
       } else if (event.key === "r" || event.key === "R") {
@@ -163,22 +240,31 @@ export default function App() {
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold tracking-tight text-zinc-900">PomoDesk</h1>
           <div className="flex items-center gap-2">
-            <Button onClick={() => setStatsOpen(true)}>Stats</Button>
-            <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
+            <Button onClick={() => setStatsOpen(true)}>
+              <ChartIcon />
+              Stats
+            </Button>
+            <Button onClick={() => setSettingsOpen(true)}>
+              <SettingsIcon />
+              Settings
+            </Button>
           </div>
         </header>
 
         {loadError ? (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-            {loadError}
-          </p>
+          <div role="alert" className="banner">
+            <p className="banner__text">{loadError}</p>
+            <Button size="sm" onClick={reload}>
+              Try again
+            </Button>
+          </div>
         ) : null}
 
         {presets.length > 0 ? (
           <PresetTabs
             presets={presets}
             activePresetId={snapshot?.activePresetId ?? presets[0].id}
-            disabled={busy || !snapshot}
+            disabled={timerAction.busy || !snapshot}
             onSelect={(presetId) => void selectPreset(presetId)}
           />
         ) : null}
@@ -187,10 +273,12 @@ export default function App() {
           <TimerCard
             snapshot={snapshot}
             longBreakEvery={activePreset.longBreakEvery}
-            busy={busy}
+            busy={timerAction.busy}
             onToggle={() => void toggleTimer()}
             onReset={() => void resetTimer()}
             onSkip={() => void skipTimer()}
+            onEnd={() => void endTimer()}
+            onSelectMode={(mode) => void selectMode(mode)}
           />
         ) : (
           <div className="rounded-2xl bg-zinc-200 px-6 py-16 text-center text-sm text-zinc-600">
@@ -198,40 +286,93 @@ export default function App() {
           </div>
         )}
 
-        <p className="px-1 text-sm text-zinc-600">
-          Current:{" "}
+        <section
+          aria-labelledby="current-task-heading"
+          className="surface-card flex items-center gap-3 px-3 py-2.5"
+        >
+          <span aria-hidden="true" className="shrink-0 text-zinc-500">
+            <TargetIcon />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <h2 id="current-task-heading" className="text-xs font-medium text-zinc-600">
+              Working on
+            </h2>
+            {activeTask ? (
+              <p className="truncate text-sm font-medium text-zinc-900">{activeTask.title}</p>
+            ) : (
+              <p className="text-sm text-zinc-600">
+                No task — this focus time won't be counted against anything. Pick one below to start counting.
+              </p>
+            )}
+          </div>
+
           {activeTask ? (
-            <span className="font-medium text-zinc-900">{activeTask.title}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Run sessions without counting them against a task"
+              title="Run sessions without counting them against a task"
+              disabled={taskAction.busy}
+              onClick={() => void clearActiveTask()}
+            >
+              No task
+            </Button>
           ) : (
-            <span className="text-zinc-400">
-              no task selected — pick one below to count your pomodoros
+            <span className="badge badge--neutral" title="This session won't be counted against a task">
+              Orphan session
             </span>
           )}
-        </p>
+        </section>
 
         <TaskList
           tasks={tasks}
           loading={tasksLoading}
           error={tasksError}
-          onAdd={addTask}
-          onActivate={(task) => void run(() => useTasksStore.getState().activate(task.id))}
+          busy={taskAction.busy}
+          onAdd={(input) => taskAction.run(() => useTasksStore.getState().add(input))}
+          onActivate={(task) => void taskAction.run(() => useTasksStore.getState().activate(task.id))}
           onToggleDone={(task, done) =>
-            void run(() => useTasksStore.getState().toggleDone(task.id, done))
+            void taskAction.run(() => useTasksStore.getState().toggleDone(task.id, done))
           }
           onEdit={(task) => setEditingTask(task)}
           onDelete={(task) => setDeletingTask(task)}
+          onAddSubtask={(task, title, estSlots) =>
+            taskAction.run(() => useTasksStore.getState().addSubtask(task.id, title, estSlots))
+          }
+          onToggleSubtaskDone={(subtask, done) =>
+            taskAction.run(() => useTasksStore.getState().toggleSubtaskDone(subtask.id, done))
+          }
+          onSelectSubtask={(subtask) =>
+            taskAction.run(() => useTasksStore.getState().activateSubtask(subtask.id))
+          }
+          onEditSubtask={(subtask) => setEditingSubtask(subtask)}
+          onDeleteSubtask={(subtask) =>
+            taskAction.run(() => useTasksStore.getState().removeSubtask(subtask.id))
+          }
         />
 
-        <p className="pb-2 text-center text-xs text-zinc-400">
-          Space starts or pauses · R restarts the session · S skips ahead
+        <p className="pb-2 text-center text-xs text-zinc-600">
+          <kbd className="kbd">Space</kbd> start or pause · <kbd className="kbd">R</kbd> restart ·{" "}
+          <kbd className="kbd">S</kbd> skip
         </p>
       </div>
 
       <EditTaskDialog
-        key={editingTask?.id ?? "none"}
+        key={editingTask ? `task-${editingTask.id}` : "task-closed"}
         task={editingTask}
         onClose={() => setEditingTask(null)}
         onSave={(id, input) => useTasksStore.getState().edit(id, input)}
+      />
+
+      <SubtaskDialog
+        key={editingSubtask ? `subtask-${editingSubtask.id}` : "subtask-closed"}
+        subtask={editingSubtask}
+        onClose={() => setEditingSubtask(null)}
+        onSave={(id, input) => useTasksStore.getState().editSubtask(id, input)}
+        onDelete={(subtask) => {
+          void taskAction.run(() => useTasksStore.getState().removeSubtask(subtask.id));
+        }}
       />
 
       <ConfirmDialog
@@ -250,9 +391,9 @@ export default function App() {
 
       <ConfirmDialog
         open={pendingSwitch !== null}
-        title="Switch preset?"
+        title={pendingSwitch?.kind === "mode" ? "Switch session?" : "Switch preset?"}
         message={pendingSwitch?.message ?? ""}
-        confirmLabel="Switch preset"
+        confirmLabel={pendingSwitch?.kind === "mode" ? "Switch session" : "Switch preset"}
         onConfirm={() => void confirmSwitch()}
         onCancel={() => setPendingSwitch(null)}
       />

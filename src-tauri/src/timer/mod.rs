@@ -25,8 +25,10 @@ use crate::models::{
     TimerSnapshot, TimerStatus,
 };
 use crate::repositories::{
-    app_state, presets as preset_repo, sessions, sessions::NewSession, tasks as task_repo,
+    app_state, presets as preset_repo, sessions, sessions::NewSession, subtasks as subtask_repo,
+    tasks as task_repo,
 };
+
 use state::{duration_ms, format_clock, is_mid_session, next_break_type};
 
 /// How often the tick loop wakes up while the timer is running.
@@ -38,7 +40,7 @@ const SNAPSHOT_EVERY_MS: i64 = 5_000;
 /// Everything the engine needs from the outside world.
 pub trait TimerHost: Send + Sync {
     fn emit(&self, event: &str, payload: Value);
-    fn notify(&self, title: &str, body: &str);
+    fn notify(&self, title: &str, body: &str, next_type: SessionType);
     fn refresh_tray(&self, snapshot: &TimerSnapshot);
 }
 
@@ -61,20 +63,37 @@ impl TimerHost for TauriHost {
         }
     }
 
-    fn notify(&self, title: &str, body: &str) {
-        use tauri_plugin_notification::NotificationExt;
-        if let Err(error) = self
+    fn notify(&self, title: &str, body: &str, next_type: SessionType) {
+        use tauri_plugin_notification::{Action, ActionType, NotificationExt};
+
+        let action_label = match next_type {
+            SessionType::Focus => "Start session",
+            SessionType::ShortBreak | SessionType::LongBreak => "Start break",
+        };
+
+        let action_type = ActionType::builder("pomodesk-session")
+            .actions(vec![
+                Action::builder("close", "Close").build(),
+                Action::builder("start", action_label).build(),
+            ])
+            .build();
+
+        if let Err(error) = self.app.notification().register_action_types(vec![action_type]) {
+            eprintln!("[pomodesk] could not register notification actions: {error:?}");
+        }
+
+        let builder = self
             .app
             .notification()
             .builder()
             .title(title)
             .body(body)
-            .show()
-        {
+            .action_type_id("pomodesk-session");
+
+        if let Err(error) = builder.show() {
             eprintln!("[pomodesk] notification failed: {error:?}");
         }
     }
-
     fn refresh_tray(&self, snapshot: &TimerSnapshot) {
         crate::tray::refresh(&self.app, snapshot);
     }
@@ -130,14 +149,11 @@ impl TimerEngine {
                         .find(|preset| preset.id == saved.active_preset_id);
                     match saved_preset {
                         Some(preset) => {
-                            snapshot =
-                                state::restore(&saved, preset, cycle_focus_count, state::now_ms());
+                            snapshot = state::restore(&saved, preset, cycle_focus_count, state::now_ms());
                         }
                         None => {
                             // The preset used by the saved session was deleted.
-                            eprintln!(
-                                "[pomodesk] saved timer used a deleted preset; starting fresh"
-                            );
+                            eprintln!("[pomodesk] saved timer used a deleted preset; starting fresh");
                         }
                     }
                 }
@@ -215,8 +231,7 @@ impl TimerEngine {
 
         if snapshot.status == TimerStatus::Running {
             let now = state::now_ms();
-            snapshot.remaining_ms =
-                state::remaining_from_deadline(snapshot.ends_at.unwrap_or(now), now);
+            snapshot.remaining_ms = state::remaining_from_deadline(snapshot.ends_at.unwrap_or(now), now);
             snapshot.ends_at = None;
             snapshot.status = TimerStatus::Paused;
             self.after_change(&mut snapshot).await?;
@@ -264,6 +279,33 @@ impl TimerEngine {
         Ok(snapshot.clone())
     }
 
+    /// Ends the current focus session now and counts it as completed. Used by
+    /// the "End session" button for the case where only a few minutes are
+    /// left. Breaks cannot be ended this way; use Skip for those.
+    pub async fn end_session(&self) -> Result<TimerSnapshot, AppError> {
+        let mut snapshot = self.state.lock().await;
+
+        if snapshot.session_type != SessionType::Focus {
+            return Err(AppError::conflict(
+                "Only a focus session can be ended early. Use Skip to leave a break.",
+            ));
+        }
+        if !is_mid_session(&snapshot) {
+            return Err(AppError::conflict("This session hasn't started yet."));
+        }
+
+        let now = state::now_ms();
+        if snapshot.status == TimerStatus::Running {
+            snapshot.remaining_ms =
+                state::remaining_from_deadline(snapshot.ends_at.unwrap_or(now), now);
+        }
+        let elapsed_ms = (snapshot.total_ms - snapshot.remaining_ms).max(1000);
+        snapshot.remaining_ms = 0;
+
+        self.complete_locked(&mut snapshot, now, Some(elapsed_ms)).await;
+        Ok(snapshot.clone())
+    }
+
     /// Switches the preset. While a focus session is in progress this refuses
     /// unless `force` is true; the frontend then asks the user first.
     pub async fn switch_preset(
@@ -298,6 +340,45 @@ impl TimerEngine {
         Ok(snapshot.clone())
     }
 
+    /// Switches the current session type. A focus session in progress needs
+    /// confirmation, exactly like switching presets does; leaving a break is
+    /// silent.
+    pub async fn switch_session_type(
+        &self,
+        kind: SessionType,
+        force: bool,
+    ) -> Result<TimerSnapshot, AppError> {
+        let mut snapshot = self.state.lock().await;
+
+        // Clicking the tab that is already active must never punish the user.
+        if kind == snapshot.session_type && snapshot.status != TimerStatus::Idle {
+            return Ok(snapshot.clone());
+        }
+
+        let preset = self.load_preset(snapshot.active_preset_id).await?;
+
+        if !force && kind != snapshot.session_type && is_mid_session(&snapshot) {
+            let label = match kind {
+                SessionType::Focus => "Focus",
+                SessionType::ShortBreak => "Break",
+                SessionType::LongBreak => "Long break",
+            };
+            return Err(AppError::NeedsConfirmation {
+                message: format!(
+                    "Switch to {}? Your current focus session ({} left) will be discarded and won't count.",
+                    label,
+                    format_clock(snapshot.remaining_ms)
+                ),
+                remaining_ms: snapshot.remaining_ms,
+                preset_name: preset.name.clone(),
+            });
+        }
+
+        state::advance_to(&mut snapshot, kind, &preset, false, state::now_ms());
+        self.after_change(&mut snapshot).await?;
+        Ok(snapshot.clone())
+    }
+
     /// Called after the active preset's durations were edited. Idle timers pick
     /// the change up immediately; a session in progress keeps its length and
     /// gets the new duration next time.
@@ -309,8 +390,7 @@ impl TimerEngine {
         }
 
         let at_rest = snapshot.status == TimerStatus::Idle
-            || (snapshot.status == TimerStatus::Paused
-                && snapshot.remaining_ms >= snapshot.total_ms);
+            || (snapshot.status == TimerStatus::Paused && snapshot.remaining_ms >= snapshot.total_ms);
 
         if !at_rest {
             return Ok(());
@@ -344,7 +424,7 @@ impl TimerEngine {
 
         if remaining <= 0 {
             snapshot.remaining_ms = 0;
-            self.complete_locked(&mut snapshot, now).await;
+            self.complete_locked(&mut snapshot, now, None).await;
             return;
         }
 
@@ -428,7 +508,7 @@ impl TimerEngine {
     }
 
     /// The pipeline that runs when any session reaches zero.
-    async fn complete_locked(&self, snapshot: &mut TimerSnapshot, now: i64) {
+    async fn complete_locked(&self, snapshot: &mut TimerSnapshot, now: i64, duration_override: Option<i64>) {
         let preset = match self.load_preset(snapshot.active_preset_id).await {
             Ok(preset) => preset,
             Err(error) => {
@@ -454,7 +534,7 @@ impl TimerEngine {
             cycle_for_break = intended_cycle;
 
             match self
-                .record_focus_completion(&preset, snapshot, ended_at)
+                .record_focus_completion(&preset, snapshot, ended_at, duration_override)
                 .await
             {
                 Ok(credited) => {
@@ -470,7 +550,7 @@ impl TimerEngine {
         } else if completed == SessionType::LongBreak {
             // Finishing a long break starts a brand-new cycle.
             if let Err(error) = self.reset_cycle_count().await {
-                eprintln!("[pomodesk] could not reset cycle: {}", error.message());
+                eprintln!("[pomodesk] could not reset cycle: {error:?}");
             }
             snapshot.cycle_focus_count = 0;
             cycle_for_break = 0;
@@ -512,7 +592,7 @@ impl TimerEngine {
 
         if settings.notifications_enabled {
             let (title, body) = completion_message(completed);
-            self.host.notify(title, body);
+            self.host.notify(title, body, next);
         }
 
         self.host.emit(
@@ -524,11 +604,15 @@ impl TimerEngine {
 
     /// Writes the session row, credits the active task and bumps the cycle
     /// counter — all inside one transaction, so it is all-or-nothing.
+    ///
+    /// `duration_override` lets an early end log the elapsed time instead of
+    /// the planned duration; `None` keeps the planned duration.
     async fn record_focus_completion(
         &self,
         preset: &Preset,
         snapshot: &TimerSnapshot,
         ended_at: chrono::DateTime<chrono::Utc>,
+        duration_override: Option<i64>,
     ) -> Result<Option<i64>, AppError> {
         let mut tx = self.pool.begin().await?;
 
@@ -542,6 +626,17 @@ impl TimerEngine {
                     task_repo::credit_slot(&mut tx, task_id).await?;
                     credited = Some(task_id);
                     task_title = Some(task.title);
+
+                    // Credit the focused subtask too, when it belongs to this task.
+                    if let Some(subtask_id) =
+                        app_state::get_i64(&mut tx, app_state::ACTIVE_SUBTASK_ID).await?
+                    {
+                        if let Ok(subtask) = subtask_repo::get(&mut tx, subtask_id).await {
+                            if subtask.task_id == task_id && !subtask.is_done {
+                                let _ = subtask_repo::credit_slot(&mut tx, subtask_id).await;
+                            }
+                        }
+                    }
                 }
                 Ok(_) => {}
                 Err(error) => {
@@ -565,7 +660,7 @@ impl TimerEngine {
                     .clone()
                     .unwrap_or_else(|| to_sql_timestamp(ended_at)),
                 ended_at: to_sql_timestamp(ended_at),
-                duration_sec: (snapshot.total_ms / 1000).max(1),
+                duration_sec: (duration_override.unwrap_or(snapshot.total_ms) / 1000).max(1),
             },
         )
         .await?;
@@ -624,7 +719,7 @@ mod tests {
         fn emit(&self, event: &str, _payload: Value) {
             self.events.lock().unwrap().push(event.to_string());
         }
-        fn notify(&self, _title: &str, _body: &str) {}
+        fn notify(&self, _title: &str, _body: &str, _next_type: SessionType) {}
         fn refresh_tray(&self, _snapshot: &TimerSnapshot) {}
     }
 
@@ -676,6 +771,8 @@ mod tests {
                 title: "Write architecture doc".into(),
                 note: String::new(),
                 est_slots: 3,
+                completed_slots: None,
+                tags: Vec::new(),
             },
         )
         .await
@@ -739,6 +836,100 @@ mod tests {
         let credited = tasks.iter().find(|entry| entry.id == task.id).unwrap();
         assert_eq!(credited.completed_slots, 1);
         assert!(credited.is_active, "the task stays active after a session");
+    }
+
+    #[tokio::test]
+    async fn ending_a_focus_session_early_counts_it() {
+        let pool = crate::db::memory_pool().await;
+        let task = add_task(&pool).await;
+        crate::services::tasks::set_active(&pool, Some(task.id))
+            .await
+            .unwrap();
+
+        let engine = engine_without_auto_start(&pool, RecordingHost::new()).await;
+        engine.start().await.unwrap();
+        // Let a little real time pass so the elapsed duration is measurable.
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+
+        let after = engine.end_session().await.unwrap();
+        assert_eq!(after.session_type, SessionType::ShortBreak);
+        assert_eq!(after.cycle_focus_count, 1);
+        assert_eq!(session_count(&pool).await, 1);
+
+        let tasks = crate::services::tasks::list(&pool).await.unwrap();
+        let credited = tasks.iter().find(|entry| entry.id == task.id).unwrap();
+        assert_eq!(credited.completed_slots, 1);
+
+        // Elapsed duration logged, not the full 25 minutes.
+        let duration: i64 =
+            sqlx::query_scalar("SELECT duration_sec FROM sessions")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!((1..25 * 60).contains(&duration), "duration was {duration}");
+    }
+
+    #[tokio::test]
+    async fn switching_session_type_idle_is_silent() {
+        let pool = crate::db::memory_pool().await;
+        let engine = engine_with(&pool, RecordingHost::new()).await;
+
+        let switched = engine.switch_session_type(SessionType::LongBreak, false).await.unwrap();
+        assert_eq!(switched.session_type, SessionType::LongBreak);
+        assert_eq!(switched.status, TimerStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn switching_session_type_mid_focus_needs_confirmation() {
+        let pool = crate::db::memory_pool().await;
+        let engine = engine_with(&pool, RecordingHost::new()).await;
+        engine.start().await.unwrap();
+
+        let err = engine
+            .switch_session_type(SessionType::LongBreak, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::NeedsConfirmation { .. }));
+
+        let switched = engine
+            .switch_session_type(SessionType::LongBreak, true)
+            .await
+            .unwrap();
+        assert_eq!(switched.session_type, SessionType::LongBreak);
+        assert_eq!(switched.status, TimerStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn a_focus_session_without_an_active_task_is_logged() {
+        let pool = crate::db::memory_pool().await;
+        let engine = engine_without_auto_start(&pool, RecordingHost::new()).await;
+
+        engine.start().await.unwrap();
+        let ends_at = engine.snapshot().await.ends_at.unwrap();
+        engine.tick_at(ends_at).await;
+
+        assert_eq!(session_count(&pool).await, 1);
+        assert_eq!(engine.snapshot().await.cycle_focus_count, 1);
+
+        let task_id: Option<i64> =
+            sqlx::query_scalar("SELECT task_id FROM sessions")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(task_id.is_none(), "orphan session must have no task");
+    }
+
+    #[tokio::test]
+    async fn ending_a_break_is_refused() {
+        let pool = crate::db::memory_pool().await;
+        let engine = engine_with(&pool, RecordingHost::new()).await;
+        engine.start().await.unwrap();
+        let ends_at = engine.snapshot().await.ends_at.unwrap();
+        engine.tick_at(ends_at).await; // now on a break
+        engine.start().await.unwrap(); // running break
+
+        let err = engine.end_session().await.unwrap_err();
+        assert!(matches!(err, AppError::Conflict { .. }));
     }
 
     #[tokio::test]

@@ -1,51 +1,840 @@
 @import "tailwindcss";
 
-/* The app uses one restrained palette: warm neutral surfaces with a single
-   mode colour on the timer card. Colour is always paired with a text label. */
+/* ---------------------------------------------------------------------------
+   Design tokens
+   ---------------------------------------------------------------------------
+   One restrained palette for the whole app: warm neutral surfaces, a single
+   dark accent for actions, one colour per timer mode, and semantic red / green
+   that are only ever used together with a text label. Every token is named
+   after the job it does, not after how it looks.
+--------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
+
+  /* Surfaces */
+  --surface-app: #f4f4f5;
+  --surface-card: #ffffff;
+  --surface-muted: #fafafa;
+  --surface-sunken: #f4f4f5;
+
+  /* Borders */
+  --border-subtle: #f4f4f5;
+  --border-default: #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  /* Text */
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-on-dark: #ffffff;
+
+  /* Actions */
+  --action: #18181b;
+  --action-hover: #3f3f46;
+
+  /* Destructive */
+  --danger: #b91c1c;
+  --danger-hover: #991b1b;
+  --danger-surface: #fef2f2;
+  --danger-text: #991b1b;
+  --danger-border: #fecaca;
+
+  /* Success */
+  --success-surface: #ecfdf5;
+  --success-text: #047857;
+
+  /* Timer modes */
   --mode-focus: #b3402f;
   --mode-short: #2f7d82;
   --mode-long: #33608a;
+
+  /* Focus ring colour. Dark surfaces override it with a light ring. */
+  --focus-ring: #18181b;
 }
 
-html,
-body,
-#root {
-  height: 100%;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--surface-app);
+    color: var(--text-primary);
+    font-family:
+      "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The modal backdrop dims the page; the page itself must not scroll behind
+     an open dialog. `Dialog` toggles this class while a dialog is on screen. */
+  body.is-dialog-open {
+    overflow: hidden;
+  }
 }
 
-body {
-  margin: 0;
-  background-color: #f4f4f5;
-  color: #27272a;
-  font-family:
-    "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer components {
+  /* ---- Surfaces ---------------------------------------------------------- */
+
+  .surface-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+  }
+
+  /* ---- Buttons ----------------------------------------------------------- */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .btn--primary {
+    background-color: var(--action);
+    color: var(--text-on-dark);
+  }
+
+  .btn--primary:hover:not(:disabled) {
+    background-color: var(--action-hover);
+  }
+
+  .btn--secondary {
+    background-color: var(--surface-card);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+
+  .btn--secondary:hover:not(:disabled) {
+    background-color: var(--surface-muted);
+  }
+
+  .btn--ghost {
+    background-color: transparent;
+    color: var(--text-secondary);
+  }
+
+  .btn--ghost:hover:not(:disabled) {
+    background-color: var(--surface-sunken);
+    color: var(--text-primary);
+  }
+
+  .btn--danger {
+    background-color: var(--danger);
+    color: var(--text-on-dark);
+  }
+
+  .btn--danger:hover:not(:disabled) {
+    background-color: var(--danger-hover);
+  }
+
+  .btn--sm {
+    padding: 4px 10px;
+    font-size: 13px;
+    line-height: 18px;
+    border-radius: 6px;
+  }
+
+  /* ---- Icon-only button -------------------------------------------------- */
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    border: none;
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .icon-btn:hover:not(:disabled) {
+    background-color: var(--surface-sunken);
+    color: var(--text-primary);
+  }
+
+  .icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  .icon-btn--danger:hover:not(:disabled) {
+    color: var(--danger-text);
+  }
+
+  /* ---- Form fields ------------------------------------------------------- */
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .field__label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .field__label {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--text-secondary);
+  }
+
+  .field__optional {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .field__hint {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-muted);
+  }
+
+  .field__error {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--danger-text);
+  }
+
+  /* Lines a submit button up with the inputs, whose labels sit above them. */
+  .form-row__submit {
+    padding-top: 20px;
+    flex: none;
+  }
+
+  .text-input,
+  .text-area,
+  .number-input {
+    width: 100%;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background-color: var(--surface-card);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .text-input::placeholder,
+  .text-area::placeholder {
+    color: var(--text-muted);
+  }
+
+  .text-input:hover:not(:disabled),
+  .text-area:hover:not(:disabled),
+  .number-input:hover:not(:disabled) {
+    border-color: var(--text-muted);
+  }
+
+  .text-input:disabled,
+  .text-area:disabled,
+  .number-input:disabled {
+    background-color: var(--surface-sunken);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .text-input[aria-invalid="true"],
+  .text-area[aria-invalid="true"],
+  .number-input[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+
+  .text-area {
+    resize: vertical;
+    min-height: 72px;
+  }
+
+  /* ---- Dialogs ----------------------------------------------------------- */
+
+  .dialog {
+    /* `margin: auto` centres the dialog on both axes inside the viewport. */
+    margin: auto;
+    width: min(92vw, 520px);
+    max-width: 520px;
+    max-height: min(88vh, 760px);
+    padding: 0;
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    background-color: var(--surface-card);
+    color: var(--text-primary);
+    overflow: hidden;
+    box-shadow: 0 24px 48px -24px rgb(24 24 27 / 0.45);
+  }
+
+  .dialog--wide {
+    width: min(94vw, 560px);
+    max-width: 560px;
+  }
+
+  .dialog__inner {
+    display: flex;
+    flex-direction: column;
+    max-height: min(88vh, 760px);
+  }
+
+  .dialog__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .dialog__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 24px;
+  }
+
+  .dialog__description {
+    margin: 4px 0 0;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-secondary);
+  }
+
+  .dialog__body {
+    padding: 16px 20px;
+    /* The dialog scrolls, never the page behind it. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    min-height: 0;
+  }
+
+  .dialog__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .dialog__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    margin: -4px -6px -4px 0;
+    border: none;
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .dialog__close:hover {
+    background-color: var(--surface-sunken);
+    color: var(--text-primary);
+  }
+
+  /* ---- Banners and badges ------------------------------------------------ */
+
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border: 1px solid var(--danger-border);
+    border-radius: 10px;
+    background-color: var(--danger-surface);
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--danger-text);
+  }
+
+  .banner__text {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+
+  .badge--neutral {
+    background-color: var(--surface-sunken);
+    color: var(--text-secondary);
+  }
+
+  .badge--current {
+    background-color: var(--action);
+    color: var(--text-on-dark);
+  }
+
+  .badge--complete {
+    background-color: var(--success-surface);
+    color: var(--success-text);
+  }
+
+  /* ---- Timer ------------------------------------------------------------- */
+
+  .timer-card {
+    border-radius: 16px;
+    padding: 20px;
+    color: var(--text-on-dark);
+    /* A dark ring would disappear on the coloured card. */
+    --focus-ring: #ffffff;
+  }
+
+  .timer-card--focus {
+    background-color: var(--mode-focus);
+  }
+
+  .timer-card--short {
+    background-color: var(--mode-short);
+  }
+
+  .timer-card--long {
+    background-color: var(--mode-long);
+  }
+
+  .timer-card__mode {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .timer-card__cycle {
+    border-radius: 999px;
+    /* A dark tint keeps the white text above the 4.5:1 contrast ratio. */
+    background-color: rgb(0 0 0 / 0.28);
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+  }
+
+  .timer-card__clock {
+    margin: 0;
+    font-size: 56px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timer-card__status {
+    border-radius: 999px;
+    background-color: rgb(0 0 0 / 0.28);
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .timer-card__ends {
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+    opacity: 0.92;
+  }
+
+  .timer-card__primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 132px;
+    border-radius: 8px;
+    background-color: var(--text-on-dark);
+    color: var(--text-primary);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    cursor: pointer;
+    border: none;
+  }
+
+  .timer-card__primary:hover:not(:disabled) {
+    background-color: #f4f4f5;
+  }
+
+  .timer-card__primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .timer-card__secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border: none;
+    border-radius: 8px;
+    background-color: rgb(0 0 0 / 0.22);
+    color: var(--text-on-dark);
+    cursor: pointer;
+  }
+
+  .timer-card__secondary:hover:not(:disabled) {
+    background-color: rgb(0 0 0 / 0.34);
+  }
+
+  .timer-card__secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .timer-card__end {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    height: 40px;
+    flex: none;
+    border: 1px solid rgb(255 255 255 / 0.45);
+    border-radius: 8px;
+    background-color: transparent;
+    color: var(--text-on-dark);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .timer-card__end:hover:not(:disabled) {
+    background-color: rgb(0 0 0 / 0.22);
+  }
+
+  .timer-card__end:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .tag-chip {
+    display: inline-block;
+    background: var(--surface-sunken, #e5e7eb);
+    color: var(--text-secondary, #4b5563);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  /* ---- Session type tabs (inside the timer card) ----------------------- */
+
+  .timer-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 10px;
+    background-color: rgb(0 0 0 / 0.18);
+  }
+
+  .timer-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-on-dark);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+
+  .timer-tab:hover:not(:disabled) {
+    background-color: rgb(0 0 0 / 0.18);
+  }
+
+  .timer-tab[aria-selected="true"] {
+    background-color: #fff;
+    color: var(--text-primary);
+  }
+
+  .timer-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  /* ---- Preset tabs ------------------------------------------------------- */
+
+  .preset-tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .preset-tab {
+    flex: none;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background-color: var(--surface-card);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
+  }
+
+  .preset-tab:hover:not(:disabled):not([aria-selected="true"]) {
+    background-color: var(--surface-muted);
+    color: var(--text-primary);
+  }
+
+  .preset-tab[aria-selected="true"] {
+    background-color: var(--action);
+    border-color: var(--action);
+    color: var(--text-on-dark);
+  }
+
+  .preset-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  /* ---- Task list --------------------------------------------------------- */
+
+  .task-item {
+    padding: 12px 16px;
+  }
+
+  .task-item--current {
+    background-color: var(--surface-muted);
+  }
+
+  .task-item--done .task-item__title {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
+
+  .task-item__title {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    color: var(--text-primary);
+  }
+
+  .task-item__note {
+    margin: 2px 0 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-muted);
+  }
+
+  /* The select control is a circle that fills in when the task is the
+     current one. The "Current" badge says the same thing in words. */
+  .task-select {
+    display: inline-flex;
+    flex: none;
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 2px solid var(--border-strong);
+    border-radius: 999px;
+    background-color: var(--surface-card);
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .task-select:hover:not(:disabled) {
+    border-color: var(--text-secondary);
+  }
+
+  .task-select[aria-pressed="true"] {
+    background-color: var(--action);
+    border-color: var(--action);
+  }
+
+  .task-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  /* ---- Statistics -------------------------------------------------------- */
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .stat-block {
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background-color: var(--surface-muted);
+    padding: 8px 12px;
+  }
+
+  .stat-block__label {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-muted);
+  }
+
+  .stat-block__value {
+    margin: 2px 0 0;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 24px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .week-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .week-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 64px;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .week-row__label {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-secondary);
+  }
+
+  .week-row__track {
+    height: 10px;
+    border-radius: 999px;
+    background-color: var(--surface-sunken);
+    overflow: hidden;
+  }
+
+  .week-row__bar {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background-color: var(--text-primary);
+  }
+
+  .week-row__value {
+    font-size: 12px;
+    line-height: 16px;
+    text-align: right;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Keyboard hints ---------------------------------------------------- */
+
+  .kbd {
+    display: inline-block;
+    border: 1px solid var(--border-default);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background-color: var(--surface-card);
+    padding: 1px 5px;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 15px;
+    color: var(--text-secondary);
+  }
+
+  /* ---- Notice ------------------------------------------------------------ */
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-on-dark);
+    box-shadow: 0 16px 32px -16px rgb(24 24 27 / 0.55);
+    /* The toast is dark, so its focus ring has to be light. */
+    --focus-ring: #ffffff;
+  }
+
+  .notice--error {
+    background-color: var(--danger);
+  }
+
+  .notice--success {
+    background-color: var(--action);
+  }
+
+  .notice__dismiss {
+    flex: none;
+    border: none;
+    border-radius: 6px;
+    background-color: transparent;
+    color: inherit;
+    opacity: 0.75;
+    padding: 2px;
+    cursor: pointer;
+  }
+
+  .notice__dismiss:hover {
+    opacity: 1;
+  }
 }
 
-/* Mode colours for the timer card. Kept in CSS so the classes stay readable. */
-.timer-focus {
-  background-color: var(--mode-focus);
-}
-
-.timer-short {
-  background-color: var(--mode-short);
-}
-
-.timer-long {
-  background-color: var(--mode-long);
-}
-
-/* A visible focus ring is essential for keyboard users. */
+/* A visible focus ring is essential for keyboard users. It follows the
+   element's own border radius, and every component sets `--focus-ring` to a
+   colour that contrasts with the surface it sits on. */
 :focus-visible {
-  outline: 2px solid #18181b;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-radius: 6px;
 }
 
 dialog::backdrop {
-  background-color: rgba(24, 24, 27, 0.45);
+  background-color: rgb(24 24 27 / 0.45);
 }
 
 /* Respect the operating system's reduced-motion preference. */

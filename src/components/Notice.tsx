@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { cn } from "../lib/cn";
 import { useUiStore } from "../stores/ui";
+import { AlertIcon, CheckCircleIcon, CloseIcon } from "./ui/Icon";
 
 export function Notice() {
   const notice = useUiStore((state) => state.notice);
@@ -18,25 +19,28 @@ export function Notice() {
 
   if (!notice) return null;
 
+  const isError = notice.kind === "error";
+
   return (
-    <div
-      role={notice.kind === "error" ? "alert" : "status"}
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4"
-    >
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
       <div
+        role={isError ? "alert" : "status"}
         className={cn(
-          "pointer-events-auto flex max-w-[520px] items-start gap-3 rounded-lg px-4 py-3 text-sm shadow-lg",
-          notice.kind === "error" ? "bg-red-700 text-white" : "bg-zinc-900 text-white",
+          "notice pointer-events-auto max-w-[520px]",
+          isError ? "notice--error" : "notice--success",
         )}
       >
-        <p className="min-w-0">{notice.text}</p>
+        <span aria-hidden="true" className="mt-0.5 shrink-0">
+          {isError ? <AlertIcon /> : <CheckCircleIcon />}
+        </span>
+        <p className="min-w-0 flex-1">{notice.text}</p>
         <button
           type="button"
           onClick={clearNotice}
           aria-label="Dismiss message"
-          className="shrink-0 rounded px-1 text-white/70 hover:text-white"
+          className="notice__dismiss"
         >
-          ✕
+          <CloseIcon />
         </button>
       </div>
     </div>

@@ -9,7 +9,7 @@ import { usePresetsStore } from "../stores/presets";
 import { useSettingsStore } from "../stores/settings";
 import { useTasksStore } from "../stores/tasks";
 import { useTimerStore } from "../stores/timer";
-import { playCompletionSound } from "./sound";
+import { playCompletionSound, stopCompletionSound } from "./sound";
 import type { SessionCompletePayload, TickPayload, TimerSnapshot } from "./types";
 
 /**
@@ -30,13 +30,17 @@ export function bindCoreEvents(): () => void {
       const complete = await listen<SessionCompletePayload>(
         "timer:session_complete",
         () => {
-          if (useSettingsStore.getState().settings?.soundEnabled) {
-            playCompletionSound();
+          const settings = useSettingsStore.getState().settings;
+          if (settings?.soundEnabled) {
+            playCompletionSound(settings.soundId);
           }
           // A finished focus session may have credited the active task.
           void useTasksStore.getState().load();
         },
       );
+      const notificationClosed = await listen("notification:closed", () => {
+        stopCompletionSound();
+      });
       const tasksChanged = await listen("tasks:changed", () => {
         void useTasksStore.getState().load();
       });
@@ -51,7 +55,7 @@ export function bindCoreEvents(): () => void {
         return;
       }
 
-      unlisteners.push(tick, stateChanged, complete, tasksChanged, presetsChanged);
+      unlisteners.push(tick, stateChanged, complete, tasksChanged, presetsChanged, notificationClosed);
     } catch {
       // Running in a plain browser instead of the desktop shell; the UI still
       // renders and its own error banners explain what is unavailable.

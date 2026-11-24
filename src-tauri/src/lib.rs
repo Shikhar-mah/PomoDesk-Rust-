@@ -20,7 +20,9 @@ pub mod tray;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+use tauri_plugin_notification::NotificationExt;
 
 use state::AppState;
 use timer::{TauriHost, TimerEngine};
@@ -67,6 +69,37 @@ pub fn run() {
                 }
             }
 
+            // Wire notification button clicks (Close / Start) and taps to the
+            // app: tapping opens the window, Close stops the ringing sound,
+            // Start kicks off the next session.
+            let notification = handle.notification();
+            let handle_for_action = handle.clone();
+            let _ = notification.on_action(move |action| {
+                let app = handle_for_action.clone();
+                let action_id = action.action_id().to_string();
+                tauri::async_runtime::spawn(async move {
+                    let Some(state) = app.try_state::<AppState>() else {
+                        return;
+                    };
+                    match action_id.as_str() {
+                        "tap" => tray::show_window(&app),
+                        "close" | "dismiss" => {
+                            let _ = app.emit("notification:closed", ());
+                        }
+                        "start" => {
+                            if let Err(error) = state.timer.start().await {
+                                eprintln!("[pomodesk] notification start failed: {}", error.message());
+                            }
+                            // Stop the ringing chime; do NOT open the window, so
+                            // the user can keep working while the next session
+                            // starts in the background.
+                            let _ = app.emit("notification:closed", ());
+                        }
+                        _ => {}
+                    }
+                });
+            });
+
             timer.spawn_tick_loop();
             Ok(())
         })
@@ -94,12 +127,19 @@ pub fn run() {
             commands::tasks::set_task_done,
             commands::tasks::delete_task,
             commands::tasks::set_active_task,
+            commands::subtasks::create_subtask,
+            commands::subtasks::update_subtask,
+            commands::subtasks::set_subtask_done,
+            commands::subtasks::delete_subtask,
+            commands::subtasks::set_active_subtask,
             commands::timer::get_timer_state,
             commands::timer::start_timer,
             commands::timer::pause_timer,
             commands::timer::resume_timer,
             commands::timer::skip_session,
             commands::timer::reset_session,
+            commands::timer::end_session,
+            commands::timer::switch_session_type,
             commands::timer::switch_preset,
             commands::stats::get_stats_today,
             commands::stats::get_stats_daily,

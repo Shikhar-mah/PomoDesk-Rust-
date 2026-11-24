@@ -1,12 +1,14 @@
 // Edit dialog for an existing task (title, optional note, planned pomodoros).
 
-import { useId, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { describeError } from "../lib/ipc";
 import type { Task, TaskInput } from "../lib/types";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
-import { InlineError } from "./ui/InlineError";
+import { NumberField } from "./ui/NumberField";
+import { TextAreaField } from "./ui/TextAreaField";
+import { TextField } from "./ui/TextField";
 
 interface EditTaskDialogProps {
   task: Task | null;
@@ -14,14 +16,17 @@ interface EditTaskDialogProps {
   onSave: (id: number, input: TaskInput) => Promise<void>;
 }
 
+/** The place a message belongs to, so it appears next to the right control. */
+type ErrorScope = "title" | "slots" | "done" | "save";
+
 export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [note, setNote] = useState(task?.note ?? "");
   const [slots, setSlots] = useState(String(task?.estSlots ?? 1));
-  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(String(task?.completedSlots ?? 0));
+  const [tags, setTags] = useState((task?.tags ?? []).join(", "));
+  const [error, setError] = useState<{ scope: ErrorScope; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const errorId = useId();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,13 +34,25 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
 
     const cleanTitle = title.trim();
     if (!cleanTitle) {
-      setError("Give the task a title.");
+      setError({ scope: "title", message: "Give the task a title." });
       return;
     }
 
     const estSlots = Number(slots);
     if (!Number.isInteger(estSlots) || estSlots < 1 || estSlots > 99) {
-      setError("Planned pomodoros must be a whole number between 1 and 99.");
+      setError({
+        scope: "slots",
+        message: "Planned pomodoros must be a whole number between 1 and 99.",
+      });
+      return;
+    }
+
+    const completedSlots = Number(done);
+    if (!Number.isInteger(completedSlots) || completedSlots < 0 || completedSlots > 999) {
+      setError({
+        scope: "done",
+        message: "Pomodoros done must be a whole number between 0 and 999.",
+      });
       return;
     }
 
@@ -43,10 +60,19 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
     setError(null);
 
     try {
-      await onSave(task.id, { title: cleanTitle, note: note.trim(), estSlots });
+      await onSave(task.id, {
+        title: cleanTitle,
+        note: note.trim(),
+        estSlots,
+        completedSlots,
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      });
       onClose();
     } catch (saveError) {
-      setError(describeError(saveError));
+      setError({ scope: "save", message: describeError(saveError) });
     } finally {
       setBusy(false);
     }
@@ -69,52 +95,79 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
       }
     >
       <form id="edit-task-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <div>
-          <label htmlFor="edit-task-title" className="mb-1 block text-sm font-medium text-zinc-700">
-            Title
-          </label>
-          <input
-            id="edit-task-title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            maxLength={120}
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? errorId : undefined}
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
-          />
-        </div>
+        <TextField
+          id="edit-task-title"
+          label="Title"
+          value={title}
+          onChange={(value) => {
+            setTitle(value);
+            setError(null);
+          }}
+          maxLength={120}
+          error={error?.scope === "title" ? error.message : null}
+          autoFocus
+        />
 
-        <div>
-          <label htmlFor="edit-task-note" className="mb-1 block text-sm font-medium text-zinc-700">
-            Note <span className="font-normal text-zinc-500">(optional)</span>
-          </label>
-          <textarea
-            id="edit-task-note"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            rows={3}
-            maxLength={2000}
-            className="w-full resize-y rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
-          />
-        </div>
+        <TextAreaField
+          id="edit-task-note"
+          label="Note"
+          optional
+          value={note}
+          onChange={setNote}
+          rows={3}
+          maxLength={2000}
+          placeholder="Anything you want to remember about this task"
+        />
 
-        <div className="w-36">
-          <label htmlFor="edit-task-slots" className="mb-1 block text-sm font-medium text-zinc-700">
-            Planned pomodoros
-          </label>
-          <input
-            id="edit-task-slots"
-            type="number"
-            min={1}
-            max={99}
-            step={1}
-            value={slots}
-            onChange={(event) => setSlots(event.target.value)}
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-zinc-500"
-          />
-        </div>
+        <NumberField
+          id="edit-task-slots"
+          label="Planned pomodoros"
+          value={slots}
+          onChange={(value) => {
+            setSlots(value);
+            setError(null);
+          }}
+          min={1}
+          max={99}
+          step={1}
+          hint="How many focus sessions you expect this to take"
+          error={error?.scope === "slots" ? error.message : null}
+          className="w-36"
+        />
 
-        <InlineError id={errorId} message={error} />
+        <NumberField
+          id="edit-task-done"
+          label="Pomodoros done"
+          value={done}
+          onChange={(value) => {
+            setDone(value);
+            setError(null);
+          }}
+          min={0}
+          max={999}
+          step={1}
+          hint="Correct this if a session was counted by mistake. Your statistics won't change."
+          error={error?.scope === "done" ? error.message : null}
+          className="w-36"
+        />
+
+        <TextField
+          id="edit-task-tags"
+          label="Tags"
+          value={tags}
+          onChange={(value) => {
+            setTags(value);
+            setError(null);
+          }}
+          placeholder="work, deep-focus"
+          hint="Up to 5, separated by commas"
+        />
+
+        {error?.scope === "save" ? (
+          <p role="alert" className="banner">
+            {error.message}
+          </p>
+        ) : null}
       </form>
     </Dialog>
   );

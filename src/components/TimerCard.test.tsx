@@ -20,7 +20,7 @@ function snapshot(overrides: Partial<TimerSnapshot> = {}): TimerSnapshot {
 }
 
 function renderCard(overrides: Partial<TimerSnapshot> = {}) {
-  const handlers = { onToggle: vi.fn(), onReset: vi.fn(), onSkip: vi.fn() };
+  const handlers = { onToggle: vi.fn(), onReset: vi.fn(), onSkip: vi.fn(), onEnd: vi.fn(), onSelectMode: vi.fn() };
   render(<TimerCard snapshot={snapshot(overrides)} longBreakEvery={4} busy={false} {...handlers} />);
   return handlers;
 }
@@ -43,6 +43,8 @@ describe("TimerCard", () => {
         onToggle={vi.fn()}
         onReset={vi.fn()}
         onSkip={vi.fn()}
+        onEnd={vi.fn()}
+        onSelectMode={vi.fn()}
       />,
     );
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
@@ -56,6 +58,8 @@ describe("TimerCard", () => {
         onToggle={vi.fn()}
         onReset={vi.fn()}
         onSkip={vi.fn()}
+        onEnd={vi.fn()}
+        onSelectMode={vi.fn()}
       />,
     );
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
@@ -72,7 +76,13 @@ describe("TimerCard", () => {
   it("shows the break mode instead of Focus", () => {
     renderCard({ sessionType: "long_break", remainingMs: 15 * 60 * 1000, totalMs: 15 * 60 * 1000 });
 
-    expect(screen.getByRole("heading", { name: "Long Break" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Long break" })).toBeInTheDocument();
+  });
+
+  it("says when the running session will end", () => {
+    renderCard({ status: "running", endsAt: new Date(2026, 0, 1, 15, 45).getTime() });
+
+    expect(screen.getByText(/Ends at/)).toBeInTheDocument();
   });
 
   it("forwards the three controls and disables them while busy", async () => {
@@ -100,6 +110,8 @@ describe("TimerCard", () => {
         onToggle={onToggle}
         onReset={vi.fn()}
         onSkip={vi.fn()}
+        onEnd={vi.fn()}
+        onSelectMode={vi.fn()}
       />,
     );
 

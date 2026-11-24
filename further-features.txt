@@ -1,0 +1,11 @@
+- display the running clock inside the preview in the taskbar
+- end session button, where the session will be ended, but will also increment the completed session count by 1, this is incase the session has just few minutes left, but needs to be ended there.
+- improving ui for to do tasks. Adding tags, sub tasks with their own pomodoro counts.
+- Ability to change the completed pomodoro as well, in case some issue is there.
+- Add support for orphan sessions as well. Ones that do not belong to any tasks. This can happen when there are no tasks in the list, but if there are tasks present, i am not able to do it. I should be able to do sessions that do not belong to any tasks as well.
+- Inside the focus timer box, give me three tabs to switch between focus, break and long break mode
+- Inside the notification box, if i click the buttons, the sessions/breaks, should start automatically, the screen should not be popping up every time i need to start a new session, or a new break.
+- 
+## New
+- On the title bar of the window preview, currently it is showing Focus/Break . {timer} - Pomodesk. But it should first show timer.
+- 

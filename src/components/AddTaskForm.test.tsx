@@ -46,10 +46,27 @@ describe("AddTaskForm", () => {
       title: "Draft the outline",
       note: "",
       estSlots: 1,
+      tags: [],
     });
 
     const titleInput = screen.getByLabelText("Task title") as HTMLInputElement;
     expect(titleInput.value).toBe("");
+  });
+
+  it("puts the problem next to the field it belongs to", async () => {
+    const user = userEvent.setup();
+    const onAdd = vi.fn();
+
+    render(<AddTaskForm onAdd={onAdd} />);
+
+    await user.type(screen.getByLabelText("Task title"), "Write the report");
+    await user.clear(screen.getByLabelText("Pomodoros"));
+    await user.type(screen.getByLabelText("Pomodoros"), "0");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    // Only the field that is wrong is marked as wrong.
+    expect(screen.getByLabelText("Pomodoros")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Task title")).not.toHaveAttribute("aria-invalid");
   });
 
   it("keeps what the user typed when saving fails", async () => {

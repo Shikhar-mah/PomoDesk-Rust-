@@ -18,6 +18,24 @@ pub struct TrayHandles {
     start_pause: MenuItem<Wry>,
     last_tooltip: Mutex<String>,
     last_button_text: Mutex<String>,
+    last_title: Mutex<String>,
+}
+
+/// Builds the window title shown in the taskbar preview. While a session is
+/// running or paused this is `"Focus · 24:13 — PomoDesk"`; with nothing to
+/// count it is just `"PomoDesk"`.
+pub fn window_title(snapshot: &TimerSnapshot) -> String {
+    let is_at_rest = snapshot.status == TimerStatus::Idle
+        && snapshot.remaining_ms >= snapshot.total_ms;
+    if is_at_rest {
+        return "PomoDesk".to_string();
+    }
+    let label = match snapshot.session_type {
+        SessionType::Focus => "Focus",
+        SessionType::ShortBreak => "Short break",
+        SessionType::LongBreak => "Long break",
+    };
+    format!("{label} · {} — PomoDesk", format_clock(snapshot.remaining_ms))
 }
 
 /// Creates the tray icon. Returns an error if the platform refuses, in which
@@ -65,13 +83,33 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         start_pause,
         last_tooltip: Mutex::new(String::new()),
         last_button_text: Mutex::new(String::new()),
+        last_title: Mutex::new(String::new()),
     });
 
     Ok(())
 }
 
-/// Updates the tooltip ("Focus · 24:13") and the Start/Pause menu label.
+/// Updates the window title (taskbar preview), the tooltip and the Start/Pause
+/// menu label.
 pub fn refresh(app: &AppHandle, snapshot: &TimerSnapshot) {
+    // Window title first, so it keeps updating even if the tray failed to build.
+    if let Some(window) = app.get_webview_window("main") {
+        let title = window_title(snapshot);
+        let mut should_set = true;
+        if let Some(handles) = app.try_state::<TrayHandles>() {
+            if let Ok(mut last) = handles.last_title.lock() {
+                if *last == title {
+                    should_set = false;
+                } else {
+                    *last = title.clone();
+                }
+            }
+        }
+        if should_set {
+            let _ = window.set_title(&title);
+        }
+    }
+
     let Some(handles) = app.try_state::<TrayHandles>() else {
         return;
     };
@@ -165,10 +203,58 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
     });
 }
 
-fn show_window(app: &AppHandle) {
+pub fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{SessionType, TimerSnapshot, TimerStatus};
+
+    fn snapshot(status: TimerStatus, remaining_ms: i64, total_ms: i64, session_type: SessionType) -> TimerSnapshot {
+        TimerSnapshot {
+            session_type,
+            status,
+            total_ms,
+            remaining_ms,
+            cycle_focus_count: 0,
+            active_preset_id: 1,
+            ends_at: None,
+            started_at: None,
+        }
+    }
+
+    #[test]
+    fn at_rest_title_is_plain() {
+        let snap = snapshot(TimerStatus::Idle, 25 * 60 * 1000, 25 * 60 * 1000, SessionType::Focus);
+        assert_eq!(window_title(&snap), "PomoDesk");
+    }
+
+    #[test]
+    fn running_title_shows_clock() {
+        let snap = snapshot(
+            TimerStatus::Running,
+            24 * 60 * 1000 + 13_000,
+            25 * 60 * 1000,
+            SessionType::Focus,
+        );
+        assert_eq!(window_title(&snap), "Focus · 24:13 — PomoDesk");
+    }
+
+    #[test]
+    fn long_break_title_uses_long_break_label() {
+        let snap = snapshot(
+            TimerStatus::Running,
+            14 * 60 * 1000 + 59_000,
+            15 * 60 * 1000,
+            SessionType::LongBreak,
+        );
+        assert!(window_title(&snap).starts_with("Long break · "));
+    }
+}
+

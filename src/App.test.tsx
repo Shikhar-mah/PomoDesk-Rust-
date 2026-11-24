@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import App from "./App";
-import type { Preset, Settings, TimerSnapshot } from "./lib/types";
+import { stopCompletionSound } from "./lib/sound";
+import type { Preset, Settings, Task, TimerSnapshot } from "./lib/types";
 
 // The screen is rendered against a fake core: every command the app can send is
 // answered here, so a change in the IPC contract breaks this test.
@@ -14,6 +15,19 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
+vi.mock("./lib/sound", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/sound")>();
+  return {
+    ...actual,
+    playCompletionSound: vi.fn(
+      () =>
+        ({
+          addEventListener: vi.fn(),
+        }) as unknown as HTMLAudioElement,
+    ),
+    stopCompletionSound: vi.fn(),
+  };
+});
 
 const presets: Preset[] = [
   {
@@ -42,6 +56,7 @@ const settings: Settings = {
   autoStartBreaks: true,
   autoStartFocus: false,
   soundEnabled: true,
+  soundId: "",
   notificationsEnabled: true,
   minimizeToTray: true,
 };
@@ -153,6 +168,146 @@ describe("App", () => {
     );
   });
 
+  it("shows the current task and lets the user clear it", async () => {
+    const user = userEvent.setup();
+    const activeTask: Task = {
+      id: 3,
+      title: "Write the report",
+      note: "",
+      estSlots: 3,
+      completedSlots: 1,
+      isDone: false,
+      isActive: true,
+      createdAt: "2026-11-12 09:00:00",
+      completedAt: null,
+      tags: [],
+      subtasks: [],
+    };
+    answerInvokes({ list_tasks: [activeTask], set_active_task: null });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Working on" })).toBeInTheDocument();
+
+    const workingOn = screen.getByRole("region", { name: "Working on" });
+    expect(within(workingOn).getByText("Write the report")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Run sessions without counting them against a task" }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_active_task", { id: null }),
+    );
+  });
+
+  it("shows an orphan-session badge when no task is active", async () => {
+    answerInvokes({ list_tasks: [] });
+    render(<App />);
+    expect(await screen.findByText("Orphan session")).toBeInTheDocument();
+  });
+
+  it("reports a failed preference change inside the settings dialog", async () => {
+    const user = userEvent.setup();
+    answerInvokes({
+      update_settings: () =>
+        Promise.reject({
+          code: "DATABASE",
+          message: "PomoDesk couldn't save that setting.",
+        }),
+    });
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("switch", { name: "Play a sound" }));
+
+    // The message has to be inside the dialog: a toast behind the backdrop
+    // would be invisible and unclickable.
+    const dialog = screen.getByRole("dialog");
+    expect(
+      await within(dialog).findByText(/couldn't save that setting/i),
+    ).toBeInTheDocument();
+  });
+
+  it("saves the notification sound chosen in settings", async () => {
+    const user = userEvent.setup();
+    answerInvokes();
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
+
+    const sound = screen.getByRole("combobox", { name: "Notification sound" });
+    expect(
+      within(sound).getByRole("option", { name: "Kirby alarm clock" }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(sound, "kirby-alarm-clock-127079");
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "update_settings",
+        expect.objectContaining({
+          settings: expect.objectContaining({ soundId: "kirby-alarm-clock-127079" }),
+        }),
+      ),
+    );
+  });
+
+  it("lets the user end a preview and stops it when settings closes", async () => {
+    const user = userEvent.setup();
+    answerInvokes();
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
+
+    const stop = vi.mocked(stopCompletionSound);
+    stop.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("button", { name: "Stop preview" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+
+    // Starting again and leaving the dialog must not leave the sound ringing.
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+    stop.mockClear();
+    await user.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it("stops a ringing notification when the user finishes the session", async () => {
+    const user = userEvent.setup();
+    answerInvokes({ skip_session: idleTimer });
+
+    render(<App />);
+    const stop = vi.mocked(stopCompletionSound);
+    stop.mockClear();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Skip to the next session" }),
+    );
+
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it("counts an ended session when the End button is pressed", async () => {
+    const user = userEvent.setup();
+    const runningFocus = {
+      ...idleTimer,
+      status: "running" as const,
+      endsAt: Date.now() + 1_500_000,
+    };
+    answerInvokes({ get_timer_state: runningFocus, end_session: idleTimer });
+
+    render(<App />);
+
+    const endButton = await screen.findByRole("button", { name: /end this session now/i });
+    await user.click(endButton);
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("end_session", undefined);
+  });
+
+
   it("asks before discarding a focus session when switching preset", async () => {
     const user = userEvent.setup();
     answerInvokes({
@@ -173,5 +328,18 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Switch preset?" })).toBeInTheDocument();
     expect(screen.getByText(/will be discarded/i)).toBeInTheDocument();
+  });
+
+  it("switches the session type from the tabs inside the timer card", async () => {
+    const user = userEvent.setup();
+    answerInvokes({ switch_session_type: idleTimer });
+
+    render(<App />);
+    await user.click(await screen.findByRole("tab", { name: "Long break" }));
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("switch_session_type", {
+      sessionType: "long_break",
+      force: false,
+    });
   });
 });

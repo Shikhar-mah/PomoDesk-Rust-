@@ -14,6 +14,7 @@ Use a consistent spacing scale, readable content widths, aligned layouts, and re
 
 Use clear action-oriented button labels and distinguish primary, secondary, and destructive actions. Consequential destructive actions should require confirmation when appropriate, while operations that could cause duplicate submissions should show a processing state and prevent accidental repetition. Forms should use visible meaningful labels, logical grouping, appropriate controls and autocomplete semantics, clear required/optional indicators, useful validation, field-level errors, preserved input after recoverable failures, and submission loading states. Password and related sensitive fields should provide an eye-icon visibility toggle. User interactions should have predictable results, preserve user control, support cancellation or recovery where practical, and avoid unnecessary automatic navigation, changes, or animation.
 
+
 ## 4. UI States & Feedback
 
 Interactive features must account for all relevant observable states, including default, hover, focus, active, disabled, loading, success, error, empty, selected, and permission-restricted states. Every operation that may take noticeable time should provide appropriate contextual feedback without unnecessarily blocking unrelated parts of the interface. Distinguish successful empty results from errors, explain what is empty, and provide a meaningful next action when one exists. Feedback should appear near the triggering action where possible; errors must use plain language, explain what happened and what the user can do, and never expose stack traces, database errors, raw API responses, or internal implementation details. Use persistent inline feedback when information must remain visible, and use brief non-disruptive success feedback when appropriate.
@@ -49,3 +50,8 @@ Do not add gradients, glassmorphism, excessive shadows, decorative illustrations
 ## 12. Implementation & Review Rules
 
 Before considering a UI feature complete, verify that its purpose and primary action are clear, terminology is understandable, all relevant states are handled, recoverable user input is preserved, important workflows are keyboard accessible, focus states and contrast are sufficient, responsive behavior works at relevant screen sizes, existing components and patterns are reused, meaningful class/component names are used, unfinished functionality is not presented as functional, and technical or sensitive information is not exposed. When decisions conflict, prioritize correctness and task completion first, followed by accessibility, clarity and usability, consistency, performance, and finally visual polish. Visual polish must never compromise usability, accessibility, correctness, or application behavior.
+
+
+# Futher Additions by me
+- The forms, dialogue boxes should always be in the middle of the screen, unless specified otherwise
+- The overlay background should never be scrollable from the modal component

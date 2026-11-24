@@ -1,15 +1,22 @@
 // Settings: the five preferences plus preset management.
 //
 // Preset editing happens inline (the list is replaced by the form) so we never
-// stack dialogs on top of each other.
+// stack dialogs on top of each other. Problems are reported inside the
+// dialog: a message behind the backdrop would be invisible.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { describeError } from "../lib/ipc";
+import {
+  COMPLETION_SOUNDS,
+  playCompletionSound,
+  resolveCompletionSound,
+  stopCompletionSound,
+} from "../lib/sound";
 import type { Preset, PresetInput, Settings } from "../lib/types";
 import { usePresetsStore } from "../stores/presets";
 import { useSettingsStore } from "../stores/settings";
 import { useTimerStore } from "../stores/timer";
-import { useUiStore } from "../stores/ui";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { EmptyState } from "./ui/EmptyState";
@@ -32,12 +39,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreset = usePresetsStore((state) => state.update);
   const removePreset = usePresetsStore((state) => state.remove);
 
-  const reportError = useUiStore((state) => state.reportError);
   const timerSnapshot = useTimerStore((state) => state.snapshot);
+
+  const selectedSoundId = resolveCompletionSound(settings?.soundId)?.id ?? "";
 
   const [editor, setEditor] = useState<EditorState>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Leaving Settings must never leave a preview ringing behind it. The sound
+  // itself may be a long alarm, so this is part of closing the dialog.
+  useEffect(() => {
+    if (open) return;
+    stopCompletionSound();
+    setPreviewing(false);
+  }, [open]);
 
   // Deleting the preset of a focus session that is in progress throws that
   // session away, so the inline confirmation has to say so.
@@ -48,13 +66,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     (timerSnapshot.status === "running" ||
       (timerSnapshot.status === "paused" && timerSnapshot.remainingMs < timerSnapshot.totalMs));
 
-  async function changeSetting(key: keyof Settings, value: boolean) {
+  async function changeSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
     if (!settings) return;
     try {
       await saveSettings({ ...settings, [key]: value });
-    } catch (error) {
-      reportError(error);
+      setError(null);
+    } catch (saveError) {
+      setError(describeError(saveError));
     }
+  }
+
+  function stopPreview() {
+    stopCompletionSound();
+    setPreviewing(false);
+  }
+
+  function togglePreview() {
+    if (previewing) {
+      stopPreview();
+      return;
+    }
+
+    const player = playCompletionSound(selectedSoundId);
+    if (!player) return;
+
+    setPreviewing(true);
+    player.addEventListener("ended", () => setPreviewing(false), { once: true });
   }
 
   async function submitPreset(input: PresetInput) {
@@ -71,16 +108,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     try {
       await removePreset(id);
       setPendingDeleteId(null);
-    } catch (error) {
-      reportError(error);
+      setError(null);
+    } catch (deleteError) {
+      setError(describeError(deleteError));
     } finally {
       setDeleting(false);
     }
   }
 
   return (
-    <Dialog open={open} title="Settings" onClose={onClose} className="w-[min(94vw,560px)]">
+    <Dialog open={open} title="Settings" onClose={onClose} className="dialog--wide">
       <div className="space-y-6">
+        {error ? (
+          <p role="alert" className="banner">
+            {error}
+          </p>
+        ) : null}
+
         <section aria-labelledby="settings-preferences">
           <h3 id="settings-preferences" className="mb-1 text-sm font-semibold text-zinc-800">
             Preferences
@@ -102,10 +146,50 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               />
               <Toggle
                 label="Play a sound"
-                description="A short chime when a session ends."
+                description="A sound plays when a session ends."
                 checked={settings.soundEnabled}
-                onChange={(value) => void changeSetting("soundEnabled", value)}
+                onChange={(value) => {
+                  if (!value) stopPreview();
+                  void changeSetting("soundEnabled", value);
+                }}
               />
+
+              {settings.soundEnabled && COMPLETION_SOUNDS.length > 0 ? (
+                <div className="py-3">
+                  <label
+                    htmlFor="settings-sound"
+                    className="text-sm font-medium text-zinc-800"
+                  >
+                    Notification sound
+                  </label>
+                  <p id="settings-sound-hint" className="mt-0.5 text-xs text-zinc-600">
+                    Choose the sound you hear when a session ends.
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <select
+                      id="settings-sound"
+                      className="text-input w-64 max-w-full"
+                      value={selectedSoundId}
+                      aria-describedby="settings-sound-hint"
+                      onChange={(event) => {
+                        stopPreview();
+                        void changeSetting("soundId", event.target.value);
+                      }}
+                    >
+                      {COMPLETION_SOUNDS.map((sound) => (
+                        <option key={sound.id} value={sound.id}>
+                          {sound.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <Button size="sm" onClick={togglePreview}>
+                      {previewing ? "Stop preview" : "Preview"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               <Toggle
                 label="Show desktop notifications"
                 description="A system notification when a session ends."
@@ -125,7 +209,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         </section>
 
         <section aria-labelledby="settings-presets">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between gap-3">
             <h3 id="settings-presets" className="text-sm font-semibold text-zinc-800">
               Timer presets
             </h3>
@@ -153,55 +237,62 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ) : (
             <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200">
               {presets.map((preset) => (
-                <li key={preset.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-800">{preset.name}</p>
-                    <p className="text-xs text-zinc-500">
-                      {Math.round(preset.focusSec / 60)} / {Math.round(preset.shortBreakSec / 60)} /{" "}
-                      {Math.round(preset.longBreakSec / 60)} min · long break every{" "}
-                      {preset.longBreakEvery}
-                    </p>
+                <li key={preset.id} className="px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-800">{preset.name}</p>
+                      <p className="text-xs text-zinc-600">
+                        {Math.round(preset.focusSec / 60)} / {Math.round(preset.shortBreakSec / 60)} /{" "}
+                        {Math.round(preset.longBreakSec / 60)} min · long break every{" "}
+                        {preset.longBreakEvery}
+                      </p>
+                    </div>
+
+                    {pendingDeleteId === preset.id ? null : (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          size="sm"
+                          onClick={() => setEditor({ mode: "edit", preset })}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="text-red-700"
+                          onClick={() => setPendingDeleteId(preset.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   {pendingDeleteId === preset.id ? (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className="text-right text-xs text-zinc-600">
+                    <div className="mt-2 rounded-lg bg-red-50 p-3">
+                      <p className="text-sm text-red-800">
                         {deletingActiveSession
-                          ? "Deleting this discards your focus session. Delete anyway?"
-                          : "Delete?"}
-                      </span>
-                      <Button
-                        variant="danger"
-                        className="px-2 py-1 text-xs"
-                        disabled={deleting}
-                        onClick={() => void confirmDelete(preset.id)}
-                      >
-                        {deleting ? "Deleting…" : "Yes"}
-                      </Button>
-                      <Button
-                        className="px-2 py-1 text-xs"
-                        disabled={deleting}
-                        onClick={() => setPendingDeleteId(null)}
-                      >
-                        No
-                      </Button>
+                          ? "Deleting this preset throws away the focus session you are running. Delete it anyway?"
+                          : "Delete this preset?"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={deleting}
+                          onClick={() => void confirmDelete(preset.id)}
+                        >
+                          {deleting ? "Deleting…" : "Delete preset"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={deleting}
+                          onClick={() => setPendingDeleteId(null)}
+                        >
+                          Keep it
+                        </Button>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        className="px-2 py-1 text-xs"
-                        onClick={() => setEditor({ mode: "edit", preset })}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        className="px-2 py-1 text-xs text-red-700"
-                        onClick={() => setPendingDeleteId(preset.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  )}
+                  ) : null}
                 </li>
               ))}
             </ul>

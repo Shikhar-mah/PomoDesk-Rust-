@@ -10,9 +10,11 @@ import type {
   Preset,
   PresetInput,
   SessionCompletePayload,
+  SessionType,
   Settings,
   StatsToday,
   StatsTotals,
+  Subtask,
   Task,
   TaskInput,
   TimerSnapshot,
@@ -92,6 +94,15 @@ export const ipc = {
   deleteTask: (id: number) => call<void>("delete_task", { id }),
   setActiveTask: (id: number | null) => call<number | null>("set_active_task", { id }),
 
+  // Subtasks
+  createSubtask: (taskId: number, input: { title: string; estSlots: number; completedSlots?: number | null }) =>
+    call<Subtask>("create_subtask", { taskId, input }),
+  updateSubtask: (id: number, input: { title: string; estSlots: number; completedSlots?: number | null }) =>
+    call<Subtask>("update_subtask", { id, input }),
+  setSubtaskDone: (id: number, done: boolean) => call<Subtask>("set_subtask_done", { id, done }),
+  deleteSubtask: (id: number) => call<void>("delete_subtask", { id }),
+  setActiveSubtask: (id: number | null) => call<void>("set_active_subtask", { id }),
+
   // Timer
   getTimerState: () => call<TimerSnapshot>("get_timer_state"),
   startTimer: () => call<TimerSnapshot>("start_timer"),
@@ -99,6 +110,9 @@ export const ipc = {
   resumeTimer: () => call<TimerSnapshot>("resume_timer"),
   skipSession: () => call<TimerSnapshot>("skip_session"),
   resetSession: () => call<TimerSnapshot>("reset_session"),
+  endSession: () => call<TimerSnapshot>("end_session"),
+  switchSessionType: (sessionType: SessionType, force: boolean) =>
+    call<TimerSnapshot>("switch_session_type", { sessionType, force }),
   switchPreset: (presetId: number, force: boolean) =>
     call<TimerSnapshot>("switch_preset", { presetId, force }),
 

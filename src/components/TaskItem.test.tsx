@@ -15,6 +15,8 @@ const baseTask: Task = {
   isActive: false,
   createdAt: "2026-11-12 09:00:00",
   completedAt: null,
+  tags: [],
+  subtasks: [],
 };
 
 function renderItem(overrides: Partial<Task> = {}) {
@@ -24,6 +26,11 @@ function renderItem(overrides: Partial<Task> = {}) {
     onToggleDone: vi.fn(),
     onEdit: vi.fn(),
     onDelete: vi.fn(),
+    onAddSubtask: vi.fn(),
+    onToggleSubtaskDone: vi.fn(),
+    onSelectSubtask: vi.fn(),
+    onEditSubtask: vi.fn(),
+    onDeleteSubtask: vi.fn(),
   };
 
   render(<ul><TaskItem task={task} {...handlers} /></ul>);

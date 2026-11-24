@@ -89,6 +89,8 @@ pub struct Task {
     pub is_active: bool,
     pub created_at: String,
     pub completed_at: Option<String>,
+    pub tags: Vec<String>,
+    pub subtasks: Vec<Subtask>,
 }
 
 impl Task {
@@ -103,8 +105,70 @@ impl Task {
             is_active: active_task_id == Some(row.id),
             created_at: row.created_at,
             completed_at: row.completed_at,
+            tags: Vec::new(),
+            subtasks: Vec::new(),
         }
     }
+}
+
+/// A subtask row exactly as it is stored.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SubtaskRow {
+    pub id: i64,
+    pub task_id: i64,
+    pub title: String,
+    pub est_slots: i64,
+    pub completed_slots: i64,
+    pub is_done: bool,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+/// The subtask shape the interface receives.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Subtask {
+    pub id: i64,
+    pub task_id: i64,
+    pub title: String,
+    pub est_slots: i64,
+    pub completed_slots: i64,
+    pub is_done: bool,
+    pub is_active: bool,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+impl Subtask {
+    pub fn from_row(row: SubtaskRow, active_subtask_id: Option<i64>) -> Self {
+        Self {
+            id: row.id,
+            task_id: row.task_id,
+            title: row.title,
+            est_slots: row.est_slots,
+            completed_slots: row.completed_slots,
+            is_done: row.is_done,
+            is_active: active_subtask_id == Some(row.id),
+            created_at: row.created_at,
+            completed_at: row.completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtaskInput {
+    pub title: String,
+    #[serde(default = "default_est_slots")]
+    pub est_slots: i64,
+    /// `None` means "leave the completed count untouched".
+    #[serde(default)]
+    pub completed_slots: Option<i64>,
+}
+
+fn default_est_slots() -> i64 {
+    1
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -114,6 +178,12 @@ pub struct TaskInput {
     #[serde(default)]
     pub note: String,
     pub est_slots: i64,
+    /// `None` means "leave the completed count untouched" (used by quick-add
+    /// and by any caller that only edits the title/estimate).
+    #[serde(default)]
+    pub completed_slots: Option<i64>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +275,8 @@ pub struct Settings {
     pub auto_start_breaks: bool,
     pub auto_start_focus: bool,
     pub sound_enabled: bool,
+    /// File name stem of the bundled sound; empty means the default.
+    pub sound_id: String,
     pub notifications_enabled: bool,
     pub minimize_to_tray: bool,
 }
@@ -215,6 +287,7 @@ impl Default for Settings {
             auto_start_breaks: true,
             auto_start_focus: false,
             sound_enabled: true,
+            sound_id: String::new(),
             notifications_enabled: true,
             minimize_to_tray: true,
         }

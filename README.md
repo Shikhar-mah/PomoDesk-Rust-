@@ -22,6 +22,10 @@ npm run tauri dev    # develop: starts Vite + the desktop shell
 npm run tauri build  # produce an installer in src-tauri/target/release/bundle
 ```
 
+Double-click `PomoDesk.lnk` in the project root to launch the release build without
+a terminal. After changing the code, rebuild it with
+`npm run tauri build -- --no-bundle` so the shortcut launches the current version.
+
 Tests:
 
 ```bash
@@ -89,6 +93,9 @@ These come from `docs/architecture.md`; they are the rules the tests encode.
 | Switching preset while a focus session is in progress | confirmation dialog; confirming discards the session |
 | Switching preset during a break | switches silently, break is discarded |
 | Editing the active preset | applies immediately when idle, otherwise from the next session |
+| End session | closes a focus session now and still credits it (task, session row, cycle) |
+| Switching session type from the tabs | confirmation only when discarding a focus session in progress |
+| Orphan sessions | a session with no active task is logged with no task and never errors |
 | Marking the active task done | clears the active selection |
 | Deleting the last preset | refused |
 | First task of the day | no automatic activation — the user picks it |
@@ -102,12 +109,15 @@ moment a focus session completes.
 
 ## Deliberate decisions
 
-- **Sound is synthesised** (WebAudio, two notes) instead of shipping an audio
-  file: no binary asset, works offline, still toggleable in Settings.
+- **Bundled sounds, not a synthesised chime** — every audio file in
+  `notification sound/` is discovered at build time, so adding one is all it
+  takes to offer another choice in Settings. No binary lives inside `src/` and
+  the app still works offline.
 - **Preset management lives in Settings**, not behind the tabs: tabs are for
   switching, Settings is for editing. Deleting a preset asks inline, avoiding a
   dialog on top of a dialog.
-- **No chart library** — the 7-day chart is seven divs.
+- **No chart library** — the 7-day chart is seven accessible rows with real
+  values, so it reads as text and scales to any width.
 - **No router** — there is one screen; Stats and Settings are dialogs.
 - **Single database connection** — writes are serialised, which removes a whole
   class of SQLite locking problems at this size.
@@ -136,9 +146,13 @@ Run `npm run tauri dev` and verify:
 2. **Close to tray** — closing the window hides it; the timer keeps running;
    "Show PomoDesk" brings it back. Turning the setting off makes Close quit.
 3. **Notifications** — a system notification appears when a focus session and a
-   break end (Windows Focus Assist may suppress it).
-4. **Sound** — a short chime plays when a session ends; disabling it in Settings
-   silences it.
+   break end (Windows Focus Assist may suppress it). Clicking **Start session** /
+   **Start break** on the toast starts the next session without opening the window.
+4. **Taskbar clock** — the window title (shown in the taskbar preview) counts
+   down while a session runs and freezes while paused.
+4. **Sound** — the bundled sound plays when a session ends; Settings lets you
+   choose another file from `notification sound/` and preview it, or silence it
+   entirely.
 5. **Restart mid-session** — quit from the tray while a focus session runs,
    reopen: the timer comes back paused with the correct remaining time.
 6. **Keyboard** — Space starts/pauses, R restarts, S skips; shortcuts do nothing
@@ -171,4 +185,5 @@ src/
   components/              TimerCard, PresetTabs, TaskList, dialogs, ui/
   stores/                  zustand stores
   lib/                     ipc, types, events, format, sound
+notification sound/        bundled notification audio (drop in another file to add a choice)
 ```

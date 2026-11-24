@@ -34,12 +34,28 @@ export interface Task {
   isActive: boolean;
   createdAt: string;
   completedAt: string | null;
+  tags: string[];
+  subtasks: Subtask[];
+}
+
+export interface Subtask {
+  id: number;
+  taskId: number;
+  title: string;
+  estSlots: number;
+  completedSlots: number;
+  isDone: boolean;
+  isActive: boolean;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 export interface TaskInput {
   title: string;
   note: string;
   estSlots: number;
+  completedSlots?: number | null;
+  tags?: string[];
 }
 
 export interface TimerSnapshot {
@@ -73,6 +89,8 @@ export interface Settings {
   autoStartBreaks: boolean;
   autoStartFocus: boolean;
   soundEnabled: boolean;
+  /** Id of the bundled notification sound; empty means the default. */
+  soundId: string;
   notificationsEnabled: boolean;
   minimizeToTray: boolean;
 }

@@ -29,7 +29,8 @@ pub async fn update(pool: &SqlitePool, settings: &Settings) -> Result<Settings, 
     let mut conn = pool.acquire().await?;
     let raw = serde_json::to_string(settings)?;
     app_state::set(&mut conn, app_state::SETTINGS, &raw).await?;
-    Ok(settings.clone())
+    drop(conn);
+    get(pool).await
 }
 
 #[cfg(test)]
@@ -56,5 +57,29 @@ mod tests {
         let reloaded = get(&pool).await.unwrap();
         assert!(reloaded.auto_start_focus);
         assert!(!reloaded.sound_enabled);
+    }
+
+    #[tokio::test]
+    async fn settings_saved_before_sound_choice_still_load() {
+        let pool = crate::db::memory_pool().await;
+        let mut conn = pool.acquire().await.unwrap();
+
+        // The shape written by versions without a sound picker: no sound_id key.
+        let raw = r#"{"autoStartBreaks":false,"autoStartFocus":true,"soundEnabled":true,
+            "notificationsEnabled":false,"minimizeToTray":false}"#;
+
+        crate::repositories::app_state::set(
+            &mut conn,
+            crate::repositories::app_state::SETTINGS,
+            raw,
+        )
+        .await
+        .unwrap();
+        drop(conn);
+
+        let settings = get(&pool).await.unwrap();
+        assert_eq!(settings.sound_id, "");
+        assert!(settings.sound_enabled);
+        assert!(settings.auto_start_focus);
     }
 }

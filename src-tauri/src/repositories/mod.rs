@@ -8,4 +8,6 @@
 pub mod app_state;
 pub mod presets;
 pub mod sessions;
+pub mod subtasks;
+pub mod tags;
 pub mod tasks;

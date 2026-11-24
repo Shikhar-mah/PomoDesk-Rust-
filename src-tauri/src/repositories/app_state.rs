@@ -8,6 +8,7 @@ use crate::error::AppError;
 
 // The keys are constants so a typo becomes a compile error instead of a bug.
 pub const ACTIVE_TASK_ID: &str = "active_task_id";
+pub const ACTIVE_SUBTASK_ID: &str = "active_subtask_id";
 pub const ACTIVE_PRESET_ID: &str = "active_preset_id";
 pub const CYCLE_FOCUS_COUNT: &str = "cycle_focus_count";
 pub const TIMER_SNAPSHOT: &str = "timer_snapshot";

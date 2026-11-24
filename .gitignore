@@ -23,3 +23,6 @@ Thumbs.db
 
 # Test output
 coverage/
+
+# Machine-specific launcher created for this checkout
+PomoDesk.lnk
