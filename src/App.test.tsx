@@ -58,6 +58,8 @@ const settings: Settings = {
   soundEnabled: true,
   soundId: "",
   notificationsEnabled: true,
+  pomodoroNotifications: true,
+  todoRemindersEnabled: true,
   minimizeToTray: true,
 };
 
@@ -82,6 +84,8 @@ function answerInvokes(overrides: Record<string, unknown> = {}) {
     const answers: Record<string, unknown> = {
       list_presets: presets,
       list_tasks: [],
+      list_todo_lists: [],
+      list_todos: [],
       get_timer_state: idleTimer,
       get_settings: settings,
       ...overrides,

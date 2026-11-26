@@ -49,8 +49,16 @@ pub async fn init(app: &AppHandle) -> Result<SqlitePool, AppError> {
         })?;
 
     seed_default_presets(&pool).await?;
+    ensure_inbox(&pool).await?;
 
     Ok(pool)
+}
+
+/// Guarantees the To-do Inbox exists. A safety net behind the migration seed.
+async fn ensure_inbox(pool: &SqlitePool) -> Result<(), AppError> {
+    let mut conn = pool.acquire().await?;
+    crate::repositories::todo_lists::ensure_inbox(&mut conn).await?;
+    Ok(())
 }
 
 /// Opens a database file with the settings PomoDesk relies on.
@@ -135,6 +143,8 @@ pub async fn memory_pool() -> SqlitePool {
     seed_default_presets(&pool)
         .await
         .expect("default presets should seed");
+
+    ensure_inbox(&pool).await.expect("Inbox should exist");
 
     pool
 }

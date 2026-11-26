@@ -9,13 +9,19 @@ import { usePresetsStore } from "../stores/presets";
 import { useSettingsStore } from "../stores/settings";
 import { useTasksStore } from "../stores/tasks";
 import { useTimerStore } from "../stores/timer";
+import { useTodoStore } from "../stores/todos";
 import { playCompletionSound, stopCompletionSound } from "./sound";
 import type { SessionCompletePayload, TickPayload, TimerSnapshot } from "./types";
+
+interface CoreEventHandlers {
+  /** A reminder was clicked and the task should be opened. */
+  onRevealTodo?: (todoId: number) => void;
+}
 
 /**
  * Subscribes to every core event and returns a cleanup function for unmount.
  */
-export function bindCoreEvents(): () => void {
+export function bindCoreEvents(handlers: CoreEventHandlers = {}): () => void {
   const unlisteners: Array<() => void> = [];
   let cancelled = false;
 
@@ -47,15 +53,38 @@ export function bindCoreEvents(): () => void {
       const presetsChanged = await listen("presets:changed", () => {
         void usePresetsStore.getState().load();
       });
+      const todosChanged = await listen("todos:changed", () => {
+        void useTodoStore.getState().load();
+      });
+      const todosReveal = await listen<{ todoId: number }>("todos:reveal", (event) => {
+        handlers.onRevealTodo?.(event.payload.todoId);
+      });
 
       if (cancelled) {
-        for (const stop of [tick, stateChanged, complete, tasksChanged, presetsChanged]) {
+        for (const stop of [
+          tick,
+          stateChanged,
+          complete,
+          tasksChanged,
+          presetsChanged,
+          todosChanged,
+          todosReveal,
+        ]) {
           stop();
         }
         return;
       }
 
-      unlisteners.push(tick, stateChanged, complete, tasksChanged, presetsChanged, notificationClosed);
+      unlisteners.push(
+        tick,
+        stateChanged,
+        complete,
+        tasksChanged,
+        presetsChanged,
+        todosChanged,
+        todosReveal,
+        notificationClosed,
+      );
     } catch {
       // Running in a plain browser instead of the desktop shell; the UI still
       // renders and its own error banners explain what is unavailable.

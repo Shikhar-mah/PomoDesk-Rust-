@@ -278,6 +278,8 @@ pub struct Settings {
     /// File name stem of the bundled sound; empty means the default.
     pub sound_id: String,
     pub notifications_enabled: bool,
+    pub pomodoro_notifications: bool,
+    pub todo_reminders_enabled: bool,
     pub minimize_to_tray: bool,
 }
 
@@ -289,7 +291,215 @@ impl Default for Settings {
             sound_enabled: true,
             sound_id: String::new(),
             notifications_enabled: true,
+            pomodoro_notifications: true,
+            todo_reminders_enabled: true,
             minimize_to_tray: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// To-do lists (independent of Pomodoro tasks)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoList {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub icon: String,
+    pub sort_order: i64,
+    pub is_inbox: bool,
+    pub archived_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoListInput {
+    pub name: String,
+    #[serde(default = "default_list_color")]
+    pub color: String,
+    #[serde(default = "default_list_icon")]
+    pub icon: String,
+}
+
+fn default_list_color() -> String {
+    "zinc".to_string()
+}
+
+fn default_list_icon() -> String {
+    "list".to_string()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, Default)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(rename_all = "lowercase")]
+pub enum Priority {
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+impl Priority {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoReminder {
+    pub fire_at: String,
+    pub kind: String,
+    pub lead_minutes: Option<i64>,
+    pub fired_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoSubtask {
+    pub id: i64,
+    pub todo_id: i64,
+    pub title: String,
+    pub is_done: bool,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Todo {
+    pub id: i64,
+    pub list_id: i64,
+    pub title: String,
+    pub note: String,
+    pub is_done: bool,
+    pub priority: Priority,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+    pub subtasks: Vec<TodoSubtask>,
+    pub reminder: Option<TodoReminder>,
+}
+
+/// A To-do row exactly as stored. The interface shape is [`Todo`].
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct TodoRow {
+    pub id: i64,
+    pub list_id: i64,
+    pub title: String,
+    pub note: String,
+    pub is_done: bool,
+    pub priority: String,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct TodoSubtaskRow {
+    pub id: i64,
+    pub todo_id: i64,
+    pub title: String,
+    pub is_done: bool,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
+impl From<TodoSubtaskRow> for TodoSubtask {
+    fn from(row: TodoSubtaskRow) -> Self {
+        Self {
+            id: row.id,
+            todo_id: row.todo_id,
+            title: row.title,
+            is_done: row.is_done,
+            sort_order: row.sort_order,
+            created_at: row.created_at,
+            completed_at: row.completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum ReminderInput {
+    Due,
+    Before { lead_minutes: i64 },
+    Custom { at: String },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoInput {
+    pub title: String,
+    #[serde(default)]
+    pub note: String,
+    pub list_id: i64,
+    #[serde(default)]
+    pub priority: Option<Priority>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub due_time: Option<String>,
+    #[serde(default)]
+    pub reminder: Option<ReminderInput>,
+}
+
+/// One pending reminder, joined with the task it belongs to, for the scheduler.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct DueReminder {
+    pub id: i64,
+    pub todo_id: i64,
+    pub fire_at: String,
+    pub kind: String,
+    pub lead_minutes: Option<i64>,
+    pub title: String,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub is_done: bool,
+    pub archived_at: Option<String>,
+    pub list_name: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct TodoReminderRow {
+    pub id: i64,
+    pub todo_id: i64,
+    pub fire_at: String,
+    pub kind: String,
+    pub lead_minutes: Option<i64>,
+    pub fired_at: Option<String>,
+}
+
+impl From<TodoReminderRow> for TodoReminder {
+    fn from(row: TodoReminderRow) -> Self {
+        Self {
+            fire_at: row.fire_at,
+            kind: row.kind,
+            lead_minutes: row.lead_minutes,
+            fired_at: row.fired_at,
         }
     }
 }

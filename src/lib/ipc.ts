@@ -19,6 +19,11 @@ import type {
   TaskInput,
   TimerSnapshot,
   TickPayload,
+  Todo,
+  TodoInput,
+  TodoList,
+  TodoListInput,
+  TodoSubtask,
 } from "./types";
 
 const GENERIC_MESSAGE = "Something went wrong. Please try again.";
@@ -121,6 +126,38 @@ export const ipc = {
   getStatsDaily: (days: number) => call<DailyStat[]>("get_stats_daily", { days }),
   getStatsTotals: () => call<StatsTotals>("get_stats_totals"),
   getStreak: () => call<number>("get_streak"),
+
+  // To-do lists
+  listTodoLists: () => call<TodoList[]>("list_todo_lists"),
+  createTodoList: (input: TodoListInput) => call<TodoList>("create_todo_list", { input }),
+  updateTodoList: (id: number, input: TodoListInput) =>
+    call<TodoList>("update_todo_list", { id, input }),
+  setTodoListArchived: (id: number, archived: boolean) =>
+    call<TodoList>("set_todo_list_archived", { id, archived }),
+  deleteTodoList: (id: number, moveToInbox: boolean) =>
+    call<void>("delete_todo_list", { id, moveToInbox }),
+  moveTodoList: (id: number, direction: "up" | "down") =>
+    call<void>("move_todo_list", { id, direction }),
+
+  // To-dos
+  listTodos: () => call<Todo[]>("list_todos"),
+  createTodo: (input: TodoInput) => call<Todo>("create_todo", { input }),
+  updateTodo: (id: number, input: TodoInput) => call<Todo>("update_todo", { id, input }),
+  setTodoDone: (id: number, done: boolean) => call<Todo>("set_todo_done", { id, done }),
+  deleteTodo: (id: number) => call<void>("delete_todo", { id }),
+  moveTodo: (id: number, direction: "up" | "down") =>
+    call<void>("move_todo", { id, direction }),
+
+  createTodoSubtask: (todoId: number, title: string) =>
+    call<TodoSubtask>("create_todo_subtask", { todoId, title }),
+  updateTodoSubtask: (id: number, title: string) =>
+    call<TodoSubtask>("update_todo_subtask", { id, title }),
+  setTodoSubtaskDone: (id: number, done: boolean) =>
+    call<TodoSubtask>("set_todo_subtask_done", { id, done }),
+  deleteTodoSubtask: (id: number) => call<void>("delete_todo_subtask", { id }),
+
+  snoozeTodoReminder: (todoId: number, minutes: number) =>
+    call<void>("snooze_todo_reminder", { todoId, minutes }),
 
   // Settings
   getSettings: () => call<Settings>("get_settings"),

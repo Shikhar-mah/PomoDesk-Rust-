@@ -11,6 +11,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod models;
+pub mod notifications;
 pub mod repositories;
 pub mod services;
 pub mod state;
@@ -20,7 +21,7 @@ pub mod tray;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 use tauri_plugin_notification::NotificationExt;
 
@@ -50,6 +51,10 @@ pub fn run() {
             let settings =
                 tauri::async_runtime::block_on(services::settings::get(&pool)).unwrap_or_default();
 
+            // The scheduler needs its own handle before the pool moves into
+            // the managed state.
+            let reminder_pool = pool.clone();
+
             app.manage(AppState {
                 pool,
                 timer: timer.clone(),
@@ -69,38 +74,18 @@ pub fn run() {
                 }
             }
 
-            // Wire notification button clicks (Close / Start) and taps to the
-            // app: tapping opens the window, Close stops the ringing sound,
-            // Start kicks off the next session.
+            // Register the notification categories once, then route every
+            // click through the shared handler (session and To-do actions).
+            notifications::register_action_types(&handle);
+
             let notification = handle.notification();
             let handle_for_action = handle.clone();
             let _ = notification.on_action(move |action| {
-                let app = handle_for_action.clone();
-                let action_id = action.action_id().to_string();
-                tauri::async_runtime::spawn(async move {
-                    let Some(state) = app.try_state::<AppState>() else {
-                        return;
-                    };
-                    match action_id.as_str() {
-                        "tap" => tray::show_window(&app),
-                        "close" | "dismiss" => {
-                            let _ = app.emit("notification:closed", ());
-                        }
-                        "start" => {
-                            if let Err(error) = state.timer.start().await {
-                                eprintln!("[pomodesk] notification start failed: {}", error.message());
-                            }
-                            // Stop the ringing chime; do NOT open the window, so
-                            // the user can keep working while the next session
-                            // starts in the background.
-                            let _ = app.emit("notification:closed", ());
-                        }
-                        _ => {}
-                    }
-                });
+                notifications::handle_action(handle_for_action.clone(), action.clone());
             });
 
             timer.spawn_tick_loop();
+            services::reminders::spawn(handle.clone(), reminder_pool);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -147,6 +132,23 @@ pub fn run() {
             commands::stats::get_streak,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::todos::list_todo_lists,
+            commands::todos::create_todo_list,
+            commands::todos::update_todo_list,
+            commands::todos::set_todo_list_archived,
+            commands::todos::delete_todo_list,
+            commands::todos::move_todo_list,
+            commands::todos::list_todos,
+            commands::todos::create_todo,
+            commands::todos::update_todo,
+            commands::todos::set_todo_done,
+            commands::todos::delete_todo,
+            commands::todos::move_todo,
+            commands::todos::create_todo_subtask,
+            commands::todos::update_todo_subtask,
+            commands::todos::set_todo_subtask_done,
+            commands::todos::delete_todo_subtask,
+            commands::todos::snooze_todo_reminder,
         ])
         .run(tauri::generate_context!())
         .expect("PomoDesk failed to start");

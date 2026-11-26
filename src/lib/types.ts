@@ -92,7 +92,88 @@ export interface Settings {
   /** Id of the bundled notification sound; empty means the default. */
   soundId: string;
   notificationsEnabled: boolean;
+  pomodoroNotifications: boolean;
+  todoRemindersEnabled: boolean;
   minimizeToTray: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// To-do (independent of Pomodoro tasks)
+// ---------------------------------------------------------------------------
+
+export type TodoPriority = "low" | "medium" | "high";
+export type TodoView =
+  | "all"
+  | "today"
+  | "upcoming"
+  | "overdue"
+  | "completed"
+  | "list"
+  | "archived";
+
+export interface TodoList {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
+  sortOrder: number;
+  isInbox: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+}
+
+export interface TodoListInput {
+  name: string;
+  color: string;
+  icon: string;
+}
+
+export interface TodoReminder {
+  fireAt: string;
+  kind: "due" | "before" | "custom";
+  leadMinutes: number | null;
+  firedAt: string | null;
+}
+
+export type ReminderInput =
+  | { mode: "due" }
+  | { mode: "before"; leadMinutes: number }
+  | { mode: "custom"; at: string };
+
+export interface TodoSubtask {
+  id: number;
+  todoId: number;
+  title: string;
+  isDone: boolean;
+  sortOrder: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface Todo {
+  id: number;
+  listId: number;
+  title: string;
+  note: string;
+  isDone: boolean;
+  priority: TodoPriority;
+  dueDate: string | null;
+  dueTime: string | null;
+  sortOrder: number;
+  createdAt: string;
+  completedAt: string | null;
+  subtasks: TodoSubtask[];
+  reminder: TodoReminder | null;
+}
+
+export interface TodoInput {
+  title: string;
+  note: string;
+  listId: number;
+  priority: TodoPriority;
+  dueDate: string | null;
+  dueTime: string | null;
+  reminder: ReminderInput | null;
 }
 
 export interface StatsToday {

@@ -76,17 +76,28 @@ describe("TaskItem", () => {
     expect(onActivate).not.toHaveBeenCalled();
   });
 
-  it("toggles completion and requests edit/delete through callbacks", async () => {
+  it("toggles completion with the row checkbox", async () => {
     const user = userEvent.setup();
-    const { onToggleDone, onEdit, onDelete, task } = renderItem();
+    const { onToggleDone, task } = renderItem();
 
-    await user.click(screen.getByRole("button", { name: `Mark "${task.title}" done` }));
+    await user.click(screen.getByRole("checkbox", { name: `Mark "${task.title}" done` }));
     expect(onToggleDone).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), true);
+  });
 
-    await user.click(screen.getByRole("button", { name: `Edit "${task.title}"` }));
+  it("exposes edit and delete through the single row menu", async () => {
+    const user = userEvent.setup();
+    const { onEdit, onDelete, task } = renderItem();
+
+    await user.click(
+      screen.getByRole("button", { name: `More actions for "${task.title}"` }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
     expect(onEdit).toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: `Delete "${task.title}"` }));
+    await user.click(
+      screen.getByRole("button", { name: `More actions for "${task.title}"` }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(onDelete).toHaveBeenCalled();
   });
 });

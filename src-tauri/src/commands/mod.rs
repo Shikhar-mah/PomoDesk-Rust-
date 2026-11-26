@@ -9,3 +9,4 @@ pub mod stats;
 pub mod subtasks;
 pub mod tasks;
 pub mod timer;
+pub mod todos;

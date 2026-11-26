@@ -191,12 +191,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </div>
               ) : null}
               <Toggle
-                label="Show desktop notifications"
-                description="A system notification when a session ends."
-                checked={settings.notificationsEnabled}
-                onChange={(value) => void changeSetting("notificationsEnabled", value)}
-              />
-              <Toggle
                 label="Keep running when the window is closed"
                 description="PomoDesk stays in the system tray so the timer keeps going."
                 checked={settings.minimizeToTray}
@@ -206,6 +200,42 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ) : (
             <p className="py-3 text-sm text-zinc-500">Loading your settings…</p>
           )}
+        </section>
+
+        <section aria-labelledby="settings-notifications" className="border-t border-zinc-200 pt-5">
+          <h3 id="settings-notifications" className="mb-1 text-sm font-semibold text-zinc-800">
+            Notifications
+          </h3>
+
+          {settings ? (
+            <div className="divide-y divide-zinc-100">
+              <Toggle
+                label="Show desktop notifications"
+                description="The master switch for every notification PomoDesk sends."
+                checked={settings.notificationsEnabled}
+                onChange={(value) => void changeSetting("notificationsEnabled", value)}
+              />
+              <Toggle
+                label="Pomodoro session notifications"
+                description="A system notification when a session ends."
+                checked={settings.pomodoroNotifications}
+                disabled={!settings.notificationsEnabled}
+                onChange={(value) => void changeSetting("pomodoroNotifications", value)}
+              />
+              <Toggle
+                label="To-do reminders"
+                description="Reminders for To-do tasks with a due date or custom time."
+                checked={settings.todoRemindersEnabled}
+                disabled={!settings.notificationsEnabled}
+                onChange={(value) => void changeSetting("todoRemindersEnabled", value)}
+              />
+            </div>
+          ) : null}
+
+          <p className="mt-2 text-xs leading-5 text-zinc-600">
+            Notifications are delivered by your operating system. Focus Assist / Do Not Disturb
+            can silence them, and reminders only fire while PomoDesk is running.
+          </p>
         </section>
 
         <section aria-labelledby="settings-presets">

@@ -86,51 +86,55 @@ export function SubtaskDialog({ subtask, onClose, onSave, onDelete }: SubtaskDia
         </>
       }
     >
-      <form id="edit-subtask-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <TextField
-          id="edit-subtask-title"
-          label="Title"
-          value={title}
-          onChange={(value) => {
-            setTitle(value);
-            setError(null);
-          }}
-          maxLength={120}
-          error={error?.scope === "title" ? error.message : null}
-          autoFocus
-        />
+      <form id="edit-subtask-form" onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <section className="dialog-section">
+          <TextField
+            id="edit-subtask-title"
+            label="Title"
+            value={title}
+            onChange={(value) => {
+              setTitle(value);
+              setError(null);
+            }}
+            maxLength={120}
+            error={error?.scope === "title" ? error.message : null}
+            autoFocus
+          />
+        </section>
 
-        <NumberField
-          id="edit-subtask-slots"
-          label="Planned pomodoros"
-          value={slots}
-          onChange={(value) => {
-            setSlots(value);
-            setError(null);
-          }}
-          min={1}
-          max={99}
-          step={1}
-          hint="How many focus sessions you expect this to take"
-          error={error?.scope === "slots" ? error.message : null}
-          className="w-36"
-        />
+        <section className="dialog-section">
+          <h3 className="dialog-section__title">Focus plan</h3>
+          <div className="dialog-grid">
+            <NumberField
+              id="edit-subtask-slots"
+              label="Planned"
+              value={slots}
+              onChange={(value) => {
+                setSlots(value);
+                setError(null);
+              }}
+              min={1}
+              max={99}
+              step={1}
+              error={error?.scope === "slots" ? error.message : null}
+            />
 
-        <NumberField
-          id="edit-subtask-done"
-          label="Pomodoros done"
-          value={done}
-          onChange={(value) => {
-            setDone(value);
-            setError(null);
-          }}
-          min={0}
-          max={999}
-          step={1}
-          hint="Correct this if a session was counted by mistake."
-          error={error?.scope === "done" ? error.message : null}
-          className="w-36"
-        />
+            <NumberField
+              id="edit-subtask-done"
+              label="Completed"
+              value={done}
+              onChange={(value) => {
+                setDone(value);
+                setError(null);
+              }}
+              min={0}
+              max={999}
+              step={1}
+              hint="Correct a miscounted session."
+              error={error?.scope === "done" ? error.message : null}
+            />
+          </div>
+        </section>
 
         {error?.scope === "save" ? (
           <p role="alert" className="banner">

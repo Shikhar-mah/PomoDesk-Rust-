@@ -1,18 +1,14 @@
-// One row in the task list. Purely presentational: every action is a prop, which
-// keeps the component easy to test and reuse.
+// One compact row in the Pomodoro task list.
 //
-// The row is laid out in two lines so it stays readable on a narrow window:
-// the title and the progress on the first line, the note and the actions on
-// the second.
+// Single line by default: selection, title, tags, progress, completion checkbox
+// and one `⋯` menu. Subtasks and optional metadata stay behind a disclosure so
+// the card does not grow nine controls tall.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { cn } from "../lib/cn";
 import type { Subtask, Task } from "../lib/types";
-import { Button, IconButton } from "./ui/Button";
-import { NumberField } from "./ui/NumberField";
-import { TextField } from "./ui/TextField";
-import { CheckIcon, EditIcon, TrashIcon, UndoIcon } from "./ui/Icon";
+import { Menu } from "./ui/Menu";
 
 interface TaskItemProps {
   task: Task;
@@ -45,7 +41,28 @@ export function TaskItem({
   const [expanded, setExpanded] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [newSubtaskSlots, setNewSubtaskSlots] = useState("1");
-  const fullyPlanned = task.completedSlots >= task.estSlots;
+  const subtaskInputRef = useRef<HTMLInputElement>(null);
+
+  const doneSubtasks = task.subtasks.filter((subtask) => subtask.isDone).length;
+  const progress = Math.min(100, Math.round((task.completedSlots / task.estSlots) * 100));
+  const visibleTags = task.tags.slice(0, 2);
+  const extraTags = task.tags.length - visibleTags.length;
+
+  function revealSubtaskForm() {
+    setExpanded(true);
+    // The form is one render away; focus after it exists.
+    window.setTimeout(() => subtaskInputRef.current?.focus(), 0);
+  }
+
+  const menuItems = [
+    { label: "Edit", onSelect: () => onEdit(task), disabled: task.isDone },
+    { label: "Add subtask", onSelect: revealSubtaskForm, disabled: task.isDone },
+    {
+      label: task.isDone ? "Re-open" : "Mark complete",
+      onSelect: () => onToggleDone(task, !task.isDone),
+    },
+    { label: "Delete", onSelect: () => onDelete(task), danger: true },
+  ];
 
   return (
     <li
@@ -55,7 +72,7 @@ export function TaskItem({
         task.isDone && "task-item--done",
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2">
         <button
           type="button"
           onClick={() => onActivate(task)}
@@ -80,149 +97,162 @@ export function TaskItem({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="task-item__title break-words">{task.title}</p>
             {task.isActive ? <span className="badge badge--current">Current</span> : null}
-            {task.tags.map((tag) => (
-              <span key={tag} className="tag-chip">
-                {tag}
-              </span>
-            ))}
           </div>
-        </div>
 
-        <span
-          className={cn(
-            "badge",
-            fullyPlanned ? "badge--complete" : "badge--neutral",
-          )}
-          aria-label={`${task.completedSlots} of ${task.estSlots} planned pomodoros done`}
-          title={`${task.completedSlots} of ${task.estSlots} planned pomodoros done`}
-        >
-          {task.completedSlots}/{task.estSlots}
-        </span>
-      </div>
+          {task.tags.length > 0 || task.note || task.subtasks.length > 0 || !task.isDone ? (
+            <div className="task-item__meta">
+              {visibleTags.map((tag) => (
+                <span key={tag} className="tag-chip">
+                  {tag}
+                </span>
+              ))}
+              {extraTags > 0 ? <span className="tag-chip">+{extraTags}</span> : null}
 
-      <div className="mt-1.5 flex items-center gap-2 pl-8">
-        {task.note ? <p className="task-item__note line-clamp-2 min-w-0 flex-1">{task.note}</p> : null}
-
-        <div className="ml-auto flex shrink-0 items-center">
-          <IconButton
-            label={task.isDone ? `Re-open "${task.title}"` : `Mark "${task.title}" done`}
-            disabled={disabled}
-            onClick={() => onToggleDone(task, !task.isDone)}
-          >
-            {task.isDone ? <UndoIcon /> : <CheckIcon />}
-          </IconButton>
-          <IconButton label={`Edit "${task.title}"`} disabled={disabled} onClick={() => onEdit(task)}>
-            <EditIcon />
-          </IconButton>
-          <IconButton
-            label={`Delete "${task.title}"`}
-            tone="danger"
-            disabled={disabled}
-            onClick={() => onDelete(task)}
-          >
-            <TrashIcon />
-          </IconButton>
-        </div>
-      </div>
-
-      {task.subtasks.length > 0 || !task.isDone ? (
-        <div className="mt-2 pl-8">
-          <button
-            type="button"
-            className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {task.subtasks.length === 0
-              ? "Add subtask"
-              : `${task.subtasks.filter((s) => s.isDone).length}/${task.subtasks.length} subtasks`}
-            {expanded ? " ▾" : " ▸"}
-          </button>
-
-          {expanded ? (
-            <div className="mt-2 space-y-2">
-              <ul className="space-y-1">
-                {task.subtasks.map((subtask) => (
-                  <li key={subtask.id} className="flex items-center gap-2 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => onSelectSubtask(subtask)}
-                      disabled={subtask.isDone || disabled}
-                      aria-pressed={subtask.isActive}
-                      aria-label={`Make "${subtask.title}" the current subtask`}
-                      className="task-select task-select--small"
-                    />
-                    <span className={cn("flex-1", subtask.isDone && "line-through text-zinc-400")}>
-                      {subtask.title}
-                    </span>
-                    <span className="badge badge--neutral">
-                      {subtask.completedSlots}/{subtask.estSlots}
-                    </span>
-                    <IconButton
-                      label={subtask.isDone ? "Re-open subtask" : "Mark subtask done"}
-                      disabled={disabled}
-                      onClick={() => onToggleSubtaskDone(subtask, !subtask.isDone)}
-                    >
-                      {subtask.isDone ? <UndoIcon /> : <CheckIcon />}
-                    </IconButton>
-                    <IconButton
-                      label="Edit subtask"
-                      disabled={disabled}
-                      onClick={() => onEditSubtask(subtask)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      label="Delete subtask"
-                      tone="danger"
-                      disabled={disabled}
-                      onClick={() => onDeleteSubtask(subtask)}
-                    >
-                      <TrashIcon />
-                    </IconButton>
-                  </li>
-                ))}
-              </ul>
-
-              {!task.isDone ? (
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const title = newSubtaskTitle.trim();
-                    if (!title) return;
-                    const slots = Number(newSubtaskSlots);
-                    if (!Number.isInteger(slots) || slots < 1 || slots > 99) return;
-                    onAddSubtask(task, title, slots);
-                    setNewSubtaskTitle("");
-                    setNewSubtaskSlots("1");
-                  }}
+              {task.subtasks.length > 0 || !task.isDone ? (
+                <button
+                  type="button"
+                  className="task-item__disclosure"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded((value) => !value)}
                 >
-                  <TextField
-                    id={`new-subtask-${task.id}`}
-                    label="Subtask title"
-                    value={newSubtaskTitle}
-                    onChange={setNewSubtaskTitle}
-                    placeholder="Add a subtask"
-                    maxLength={120}
-                    className="min-w-0 flex-1"
-                  />
-                  <NumberField
-                    id={`new-subtask-slots-${task.id}`}
-                    label="Pomodoros"
-                    value={newSubtaskSlots}
-                    onChange={setNewSubtaskSlots}
-                    min={1}
-                    max={99}
-                    step={1}
-                    className="w-16 shrink-0"
-                  />
-                  <Button type="submit" variant="primary" size="sm" disabled={disabled}>
-                    Add
-                  </Button>
-                </form>
+                  {task.subtasks.length === 0
+                    ? "Add subtask"
+                    : `${doneSubtasks}/${task.subtasks.length} subtasks`}
+                  <span aria-hidden="true">{expanded ? " ▾" : " ▸"}</span>
+                </button>
+              ) : null}
+
+              {task.note ? (
+                <span className="task-item__note-preview" title={task.note}>
+                  {task.note}
+                </span>
               ) : null}
             </div>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <span
+            className="task-item__progress"
+            aria-label={`${task.completedSlots} of ${task.estSlots} planned pomodoros done`}
+            title={`${task.completedSlots} of ${task.estSlots} planned pomodoros done`}
+          >
+            {task.completedSlots}/{task.estSlots}
+          </span>
+
+          <label className="task-check">
+            <input
+              type="checkbox"
+              checked={task.isDone}
+              disabled={disabled}
+              aria-label={
+                task.isDone ? `Re-open "${task.title}"` : `Mark "${task.title}" done`
+              }
+              onChange={(event) => onToggleDone(task, event.target.checked)}
+            />
+          </label>
+
+          <Menu label={`More actions for "${task.title}"`} items={menuItems} disabled={disabled} />
+        </div>
+      </div>
+
+      <div className="task-item__bar" aria-hidden="true">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+
+      {expanded ? (
+        <div className="task-item__subtasks">
+          <ul className="space-y-1">
+            {task.subtasks.map((subtask) => (
+              <li key={subtask.id} className="flex items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => onSelectSubtask(subtask)}
+                  disabled={subtask.isDone || disabled}
+                  aria-pressed={subtask.isActive}
+                  aria-label={`Make "${subtask.title}" the current subtask`}
+                  className="task-select task-select--small"
+                />
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    subtask.isDone && "text-zinc-400 line-through",
+                  )}
+                >
+                  {subtask.title}
+                </span>
+                <span
+                  className="badge badge--neutral"
+                  aria-label={`${subtask.completedSlots} of ${subtask.estSlots} planned pomodoros done`}
+                >
+                  {subtask.completedSlots}/{subtask.estSlots}
+                </span>
+                <Menu
+                  label={`More actions for subtask "${subtask.title}"`}
+                  items={[
+                    {
+                      label: "Edit",
+                      onSelect: () => onEditSubtask(subtask),
+                      disabled: subtask.isDone,
+                    },
+                    {
+                      label: subtask.isDone ? "Re-open" : "Mark complete",
+                      onSelect: () => onToggleSubtaskDone(subtask, !subtask.isDone),
+                    },
+                    {
+                      label: "Delete",
+                      onSelect: () => onDeleteSubtask(subtask),
+                      danger: true,
+                    },
+                  ]}
+                  disabled={disabled}
+                />
+              </li>
+            ))}
+          </ul>
+
+          {!task.isDone ? (
+            <form
+              className="mt-2 flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const title = newSubtaskTitle.trim();
+                if (!title) return;
+                const slots = Number(newSubtaskSlots);
+                if (!Number.isInteger(slots) || slots < 1 || slots > 99) return;
+                onAddSubtask(task, title, slots);
+                setNewSubtaskTitle("");
+                setNewSubtaskSlots("1");
+                subtaskInputRef.current?.focus();
+              }}
+            >
+              <input
+                ref={subtaskInputRef}
+                type="text"
+                className="text-input min-w-0 flex-1"
+                aria-label="Subtask title"
+                placeholder="Add a subtask"
+                value={newSubtaskTitle}
+                maxLength={120}
+                onChange={(event) => setNewSubtaskTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setExpanded(false);
+                }}
+              />
+              <input
+                type="number"
+                className="number-input w-16 shrink-0"
+                aria-label="Subtask pomodoros"
+                min={1}
+                max={99}
+                step={1}
+                value={newSubtaskSlots}
+                onChange={(event) => setNewSubtaskSlots(event.target.value)}
+              />
+              <button type="submit" className="btn btn--primary btn--sm" disabled={disabled}>
+                Add
+              </button>
+            </form>
           ) : null}
         </div>
       ) : null}

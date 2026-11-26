@@ -61,10 +61,12 @@ describe("TaskList", () => {
     expect(screen.getByText("Old chore")).toBeInTheDocument();
   });
 
-  it("explains an empty list and how to fill it", () => {
+  it("explains an empty list and keeps quick add one click away", async () => {
+    const user = userEvent.setup();
     renderList([]);
 
     expect(screen.getByText("No tasks yet")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /add task/i }));
     expect(screen.getByLabelText("Task title")).toBeInTheDocument();
   });
 

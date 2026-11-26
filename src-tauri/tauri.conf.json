@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "PomoDesk",
-        "width": 560,
-        "height": 830,
+        "width": 1000,
+        "height": 800,
         "minWidth": 420,
         "minHeight": 620,
         "resizable": true,

@@ -19,6 +19,8 @@ const defaults: Settings = {
   soundEnabled: true,
   soundId: "",
   notificationsEnabled: true,
+  pomodoroNotifications: true,
+  todoRemindersEnabled: true,
   minimizeToTray: true,
 };
 

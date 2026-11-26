@@ -64,35 +64,7 @@ impl TimerHost for TauriHost {
     }
 
     fn notify(&self, title: &str, body: &str, next_type: SessionType) {
-        use tauri_plugin_notification::{Action, ActionType, NotificationExt};
-
-        let action_label = match next_type {
-            SessionType::Focus => "Start session",
-            SessionType::ShortBreak | SessionType::LongBreak => "Start break",
-        };
-
-        let action_type = ActionType::builder("pomodesk-session")
-            .actions(vec![
-                Action::builder("close", "Close").build(),
-                Action::builder("start", action_label).build(),
-            ])
-            .build();
-
-        if let Err(error) = self.app.notification().register_action_types(vec![action_type]) {
-            eprintln!("[pomodesk] could not register notification actions: {error:?}");
-        }
-
-        let builder = self
-            .app
-            .notification()
-            .builder()
-            .title(title)
-            .body(body)
-            .action_type_id("pomodesk-session");
-
-        if let Err(error) = builder.show() {
-            eprintln!("[pomodesk] notification failed: {error:?}");
-        }
+        crate::notifications::notify_session(&self.app, title, body, next_type);
     }
     fn refresh_tray(&self, snapshot: &TimerSnapshot) {
         crate::tray::refresh(&self.app, snapshot);
@@ -590,7 +562,7 @@ impl TimerEngine {
             self.host.emit("tasks:changed", Value::Null);
         }
 
-        if settings.notifications_enabled {
+        if settings.notifications_enabled && settings.pomodoro_notifications {
             let (title, body) = completion_message(completed);
             self.host.notify(title, body, next);
         }

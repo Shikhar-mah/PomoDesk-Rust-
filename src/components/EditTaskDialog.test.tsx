@@ -27,11 +27,11 @@ describe("EditTaskDialog", () => {
 
     render(<EditTaskDialog task={task} onClose={onClose} onSave={onSave} />);
 
-    const planned = screen.getByLabelText("Planned pomodoros");
+    const planned = screen.getByLabelText("Planned");
     await user.clear(planned);
     await user.type(planned, "5");
 
-    const done = screen.getByLabelText("Pomodoros done");
+    const done = screen.getByLabelText("Completed");
     await user.clear(done);
     await user.type(done, "3");
 
@@ -57,7 +57,7 @@ describe("EditTaskDialog", () => {
 
     render(<EditTaskDialog task={task} onClose={vi.fn()} onSave={onSave} />);
 
-    const done = screen.getByLabelText("Pomodoros done");
+    const done = screen.getByLabelText("Completed");
     await user.clear(done);
     await user.type(done, "0");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -71,13 +71,13 @@ describe("EditTaskDialog", () => {
 
     render(<EditTaskDialog task={task} onClose={vi.fn()} onSave={onSave} />);
 
-    const done = screen.getByLabelText("Pomodoros done");
+    const done = screen.getByLabelText("Completed");
     await user.clear(done);
     await user.type(done, "1000");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Pomodoros done must be a whole number between 0 and 999.",
+      "Pomodoros done must be between 0 and 999.",
     );
     expect(onSave).not.toHaveBeenCalled();
   });

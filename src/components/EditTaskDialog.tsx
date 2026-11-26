@@ -1,4 +1,5 @@
-// Edit dialog for an existing task (title, optional note, planned pomodoros).
+// Edit dialog for a Pomodoro task, organised into Basics / Focus plan /
+// Organisation. The dialog body is the only scroll region.
 
 import { useState, type FormEvent } from "react";
 
@@ -16,7 +17,6 @@ interface EditTaskDialogProps {
   onSave: (id: number, input: TaskInput) => Promise<void>;
 }
 
-/** The place a message belongs to, so it appears next to the right control. */
 type ErrorScope = "title" | "slots" | "done" | "save";
 
 export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
@@ -42,7 +42,7 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
     if (!Number.isInteger(estSlots) || estSlots < 1 || estSlots > 99) {
       setError({
         scope: "slots",
-        message: "Planned pomodoros must be a whole number between 1 and 99.",
+        message: "Planned pomodoros must be between 1 and 99.",
       });
       return;
     }
@@ -51,7 +51,7 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
     if (!Number.isInteger(completedSlots) || completedSlots < 0 || completedSlots > 999) {
       setError({
         scope: "done",
-        message: "Pomodoros done must be a whole number between 0 and 999.",
+        message: "Pomodoros done must be between 0 and 999.",
       });
       return;
     }
@@ -67,7 +67,7 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
         completedSlots,
         tags: tags
           .split(",")
-          .map((t) => t.trim())
+          .map((part) => part.trim())
           .filter(Boolean),
       });
       onClose();
@@ -83,6 +83,7 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
       open={task !== null}
       title="Edit task"
       onClose={onClose}
+      className="dialog--wide"
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
@@ -94,74 +95,92 @@ export function EditTaskDialog({ task, onClose, onSave }: EditTaskDialogProps) {
         </>
       }
     >
-      <form id="edit-task-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <TextField
-          id="edit-task-title"
-          label="Title"
-          value={title}
-          onChange={(value) => {
-            setTitle(value);
-            setError(null);
-          }}
-          maxLength={120}
-          error={error?.scope === "title" ? error.message : null}
-          autoFocus
-        />
+      <form id="edit-task-form" onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <section aria-labelledby="edit-task-basics" className="dialog-section">
+          <h3 id="edit-task-basics" className="dialog-section__title">
+            Basics
+          </h3>
 
-        <TextAreaField
-          id="edit-task-note"
-          label="Note"
-          optional
-          value={note}
-          onChange={setNote}
-          rows={3}
-          maxLength={2000}
-          placeholder="Anything you want to remember about this task"
-        />
+          <TextField
+            id="edit-task-title"
+            label="Title"
+            value={title}
+            onChange={(value) => {
+              setTitle(value);
+              setError(null);
+            }}
+            maxLength={120}
+            error={error?.scope === "title" ? error.message : null}
+            autoFocus
+          />
 
-        <NumberField
-          id="edit-task-slots"
-          label="Planned pomodoros"
-          value={slots}
-          onChange={(value) => {
-            setSlots(value);
-            setError(null);
-          }}
-          min={1}
-          max={99}
-          step={1}
-          hint="How many focus sessions you expect this to take"
-          error={error?.scope === "slots" ? error.message : null}
-          className="w-36"
-        />
+          <TextAreaField
+            id="edit-task-note"
+            label="Note"
+            optional
+            value={note}
+            onChange={setNote}
+            rows={2}
+            maxLength={2000}
+            placeholder="Anything you want to remember"
+          />
+        </section>
 
-        <NumberField
-          id="edit-task-done"
-          label="Pomodoros done"
-          value={done}
-          onChange={(value) => {
-            setDone(value);
-            setError(null);
-          }}
-          min={0}
-          max={999}
-          step={1}
-          hint="Correct this if a session was counted by mistake. Your statistics won't change."
-          error={error?.scope === "done" ? error.message : null}
-          className="w-36"
-        />
+        <section aria-labelledby="edit-task-plan" className="dialog-section">
+          <h3 id="edit-task-plan" className="dialog-section__title">
+            Focus plan
+          </h3>
 
-        <TextField
-          id="edit-task-tags"
-          label="Tags"
-          value={tags}
-          onChange={(value) => {
-            setTags(value);
-            setError(null);
-          }}
-          placeholder="work, deep-focus"
-          hint="Up to 5, separated by commas"
-        />
+          <div className="dialog-grid">
+            <NumberField
+              id="edit-task-slots"
+              label="Planned"
+              value={slots}
+              onChange={(value) => {
+                setSlots(value);
+                setError(null);
+              }}
+              min={1}
+              max={99}
+              step={1}
+              error={error?.scope === "slots" ? error.message : null}
+            />
+
+            <NumberField
+              id="edit-task-done"
+              label="Completed"
+              value={done}
+              onChange={(value) => {
+                setDone(value);
+                setError(null);
+              }}
+              min={0}
+              max={999}
+              step={1}
+              hint="Doesn't change statistics."
+              error={error?.scope === "done" ? error.message : null}
+            />
+          </div>
+        </section>
+
+        <section aria-labelledby="edit-task-organisation" className="dialog-section">
+          <h3 id="edit-task-organisation" className="dialog-section__title">
+            Organisation
+          </h3>
+
+          <TextField
+            id="edit-task-tags"
+            label="Tags"
+            optional
+            value={tags}
+            onChange={(value) => {
+              setTags(value);
+              setError(null);
+            }}
+            placeholder="work, deep-focus"
+            hint="Up to 5, separated by commas"
+          />
+        </section>
 
         {error?.scope === "save" ? (
           <p role="alert" className="banner">

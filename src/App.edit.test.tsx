@@ -33,6 +33,8 @@ const settings: Settings = {
   soundEnabled: false,
   soundId: "",
   notificationsEnabled: true,
+  pomodoroNotifications: true,
+  todoRemindersEnabled: true,
   minimizeToTray: true,
 };
 const idleTimer: TimerSnapshot = {
@@ -67,6 +69,8 @@ describe("App", () => {
       const answers: Record<string, unknown> = {
         list_presets: presets,
         list_tasks: [task],
+        list_todo_lists: [],
+        list_todos: [],
         get_timer_state: idleTimer,
         get_settings: settings,
         update_task: task,
@@ -79,7 +83,10 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: 'Edit "Report"' }));
+    await user.click(
+      await screen.findByRole("button", { name: 'More actions for "Report"' }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
 
     // There must be exactly one edit dialog: a duplicate (left over from two
     // dialogs sharing the key "none") used to swallow the submit, because the
@@ -87,12 +94,12 @@ describe("App", () => {
     const dialog = await screen.findByRole("dialog", { name: "Edit task" });
     expect(screen.getAllByRole("dialog", { name: "Edit task" })).toHaveLength(1);
 
-    const planned = within(dialog).getByLabelText("Planned pomodoros");
+    const planned = within(dialog).getByLabelText("Planned");
     expect(planned).toHaveValue(2);
     await user.clear(planned);
     await user.type(planned, "5");
 
-    const done = within(dialog).getByLabelText("Pomodoros done");
+    const done = within(dialog).getByLabelText("Completed");
     expect(done).toHaveValue(1);
     await user.clear(done);
     await user.type(done, "3");
